@@ -1,0 +1,38 @@
+Thalamus L
+Caudate L
+Putamen L
+Pallidum L
+Hippocampus L
+wm-cerebellum L
+ctx-cerebellum L
+Amygdala L
+Accumbens-area L
+ctx-frontal L
+ctx-parietal L
+ctx-temporal L
+ctx-occipital L
+wm-frontal L
+wm-parietal L
+wm-temporal L
+wm-occipital L
+corpus callosum
+Midbrain
+Pons
+Medulla
+Thalamus R
+Caudate R
+Putamen R
+Pallidum R
+Hippocampus R
+wm-cerebellum R
+ctx-cerebellum R
+Amygdala R
+Accumbens-area R
+ctx-frontal R
+ctx-parietal R
+ctx-temporal R
+ctx-occipital R
+wm-frontal R
+wm-parietal R
+wm-temporal R
+wm-occipital R
