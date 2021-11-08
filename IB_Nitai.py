@@ -7,6 +7,12 @@ MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 
 
 def generate_beta(max_value = 20000, length = 800):
+    """
+    function to
+    :param max_value:
+    :param length:
+    :return:
+    """
     beta_values = [max_value]
     for idx in range(length-1):
         beta_values.append(beta_values[-1]*0.99)
