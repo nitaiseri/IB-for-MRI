@@ -101,7 +101,7 @@ def get_clusters(input_matrix, beta_values):
 ## Read data:
 
 # x = loadmat('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\huji_data.mat')
-x = loadmat('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\huji_data.mat')
+x = loadmat('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\huji_data.mat')
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 mean_values = {}
 subjects = {}
@@ -199,7 +199,7 @@ def subj_to_text(subj):
     return 'Age: ' + subj[1] + ' (' + subj[2] + ')'
 
 #plot_axis = [1, max(beta_values), 0,max(max(full_distances))*1.10]
-plot_axis = [200, 3000, 0,0.04]
+plot_axis = [200, 6000, 0, 0.005]
 #plot_axis = [1000, 5000, 0,0.015]
 
 
@@ -234,8 +234,7 @@ plt.xscale("log")
 plt.xlabel('beta')
 plt.ylabel('Dkl to mean')
 plt.axis(plot_axis)
-#plt.savefig('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\IB\\MTV2.png')
-
+plt.savefig('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\MTV2.png')
 
 
 ############FIFTH BLOCK###############
