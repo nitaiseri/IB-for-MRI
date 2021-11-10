@@ -1,35 +1,48 @@
-from embo import InformationBottleneck
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.io import loadmat
+from scipy.cluster import hierarchy
+import matplotlib
+import pickle
 
+CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
+ANALYSE_BY_AREAS = True
+ANALYSE_BY_PEOPLE = False
 
 
 def generate_beta(max_value = 20000, length = 800):
     """
-    function to
-    :param max_value:
-    :param length:
-    :return:
+    function to generate list of decreasing beta's
+    :param max_value: first beta value
+    :param length: num of beta's
+    :return: list of the beta's
     """
     beta_values = [max_value]
     for idx in range(length-1):
         beta_values.append(beta_values[-1]*0.99)
-    return beta_values[::-1]
+    return beta_values
 
 
 def D_kl(p1, p2):
+    """
+    calculate the kl distance between two matrices.
+    :param p1: matrix 1.
+    :param p2: matrix 2.
+    :return: matrix of kl distances.
+    """
     C1 = np.einsum('ij,ik->ijk', p1, 1 / p2)  ###is it the right way?
-    # print(C1)
     C2 = np.log(C1)
-    # print(C2)
     C2[p1 == 0, :] = 0
-    # print(C2)
     return np.einsum('ij,ijk->jk', p1, C2)
 
 
 def D_kl_vec(p_y_x_hat):
+    """
+    calculate kind of projecton of
+    :param p_y_x_hat:
+    :return:
+    """
     Dkl_vals = []
     for idx in range(p_y_x_hat.shape[1]):
         p_mean = np.mean(p_y_x_hat, axis=1)
@@ -41,18 +54,23 @@ def D_kl_vec(p_y_x_hat):
 
 
 def load_data(path):
+    """
+    specific function to load and preprocess first data(shir's)
+    :param path: path to .mat data
+    :return: input matrices, subjects, region, area_names, area_types
+    """
     x = loadmat(path)
     mean_values = {}
     subjects = {}
     region = {}
 
-    with open('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\gender.txt') as f:
+    with open('gender.txt') as f:
         gender = f.read().splitlines()
-    with open('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\age.txt') as f:
+    with open('age.txt') as f:
         age = f.read().splitlines()
-    with open('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\area_names2.txt') as f:
+    with open('area_names2.txt') as f:
         area_names = f.read().splitlines()
-    with open('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\area_types.txt') as f:
+    with open('area_types.txt') as f:
         area_types = f.read().splitlines()
 
     subj_id = [str(x + 1) for x in range(45)]
@@ -72,10 +90,6 @@ def load_data(path):
     del area_names[29]  # remove Left Accumbens
     del area_names[20]  # remove Medulla
     del area_names[8]  # remove Right Accumbens
-    print(len(area_names))
-    for ix in range(6):
-        print(subjects[ix].shape)
-        print(mean_values[ix].shape)
 
     del area_types[29]  # remove Left Accumbens
     del area_types[20]  # remove Medulla
@@ -86,9 +100,13 @@ def load_data(path):
 
 
 class IB:
-    def __init__(self, input_matrix, beta_values, subjects, regions, analyse_by_areas, area_names, area_types):
+    """
+    class for MRI's data for the iterative IB algorithm.
+    """
+    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan):
+        self.name_of_scan = name_of_scan
         self.beta_values = beta_values
-        self.analyse_by_areas = analyse_by_areas
+        self.analyse_by_areas = ANALYSE_BY_AREAS
         self.region = regions
         self.subjects = subjects
         self.input_matrix = input_matrix
@@ -101,9 +119,14 @@ class IB:
         self.area_types = area_types
 
     def IB_iter(self, p_x, p_y_x, p_x_hat_given_x, beta):
-        if beta < 2800:
-            # set_trace()
-            pass
+        """
+        calculate new P(x^|x) according to IB formula
+        :param p_x: P(x)
+        :param p_y_x: p(y|x)
+        :param p_x_hat_given_x: the former P(x^|x)
+        :param beta: the current beta value
+        :return: the new P(x^|x)
+        """
         p_x_hat = p_x_hat_given_x @ p_x
         p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
         # p_x_given_x_hat[np.isnan(p_x_given_x_hat)] = 0
@@ -113,6 +136,11 @@ class IB:
         return not_norm / np.sum(not_norm, axis=0)
 
     def prepare_prob(self, input_matrix):
+        """
+        Initialize probability matrix P(y|x), P(x^|x) and vector P(x)
+        :param input_matrix: P(y|x) not normalized
+        :return: P(y|x) normalized, P(x^|x) ,P(x)
+        """
         # input_matrix = abs(np.random.normal(2,1,(5,8)))
         p_y_x = input_matrix / np.sum(input_matrix, axis=0)
 
@@ -126,66 +154,84 @@ class IB:
         return p_y_x, p_x, p_x_hat_given_x
 
     def get_clusters(self):
+        """
+        main function of running the iterative IB  algorithm over the data.
+        :return:None
+        """
         p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
 
-        self.beta_values = self.beta_values[::-1]
+        self.beta_values = self.beta_values
 
         for beta in self.beta_values:
             err = 1
-            # while err > 1e-7:
+            index = 0
             while err > (1 / beta) / 10:
                 prev_p = p_x_hat_given_x
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
+                index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
+            if np.isnan(np.min(p_x_hat)) or np.isnan(np.min(p_x_hat_given_x)) or np.isnan(np.min(p_x)):
+                a = 1
             p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
             self.full_distances.append(D_kl_vec(p_y_x_hat))
-            # self.clus.append(np.linalg.matrix_rank(p_y_x_hat, tol = 1e-7))
-            # print(beta, np.linalg.matrix_rank(p_y_x_hat, tol = 1e-7))
             self.clus.append(np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10))
-            # print(beta, np.linalg.matrix_rank(p_y_x_hat, tol = (1/beta)/10))
             t, indices = np.unique(p_x_given_x_hat.round(decimals=int(np.ceil(np.log10(10 * beta)))), axis=1,
                                    return_inverse=True)
             self.clusters_matrix.append(indices)
-            # print(beta)
-        # print(self.clusters_matrix)
+        self.clusters_matrix = np.array(self.clusters_matrix)
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
 
-    def run_analysis(self):
-        #contrast = type
-        #analyse_areas- if False, analyse subjects (take transpose of the matrix)
-
-        # input_matrix = np.exp(mean_values[contrast]**2)
-        # input_matrix = np.exp(-1/mean_values[contrast])  ###for MTV
-        # input_matrix = mean_values[contrast]**4  ###for R2s
-        # input_matrix = np.exp(-1/mean_values[contrast]**2)  ###for MD
-
+    def run_analysis(self, which_ax = ANALYSE_BY_AREAS, name_of_file = None):
+        """
+        decide over which axes run the algorithm and run get_clusters, and save the object after analyse the data.
+        :param name_of_file: name of the object file to save.
+        :param which_ax: boolean that represent over which axes the algorithm gonna run.
+        :return: None
+        """
+        type_of_cluster = f'{ANALYSE_BY_AREAS=}'.split('=')[0] if which_ax else f'{ANALYSE_BY_PEOPLE=}'.split('=')[0]
+        self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
             self.input_matrix = self.input_matrix.T
         self.get_clusters()
-
-        print("Done")
+        if not name_of_file:
+            name_of_file = self.name_of_scan
+        with open(name_of_file + "-" + type_of_cluster, 'wb') as ib_data_after_analysis:
+            pickle.dump(self, ib_data_after_analysis)
+        print(str(self.name_of_scan) + "Done")
 
 
 ## Plot results:
 def subj_to_text(subj):
-    #return 'ID: ' + subj[0] + ' Age: ' + subj[1] + ' ' + subj[2]
+    """
+    make the subject into a string
+    mainly for visualisation
+    :param subj: the subject name
+    :return: string of it
+    """
     return 'Age: ' + subj[1] + ' (' + subj[2] + ')'
 
 
 def plot_results(ib_d):
+    """
+    visualisation plot to see convergence of kl distance of each cluster from mean over beta.
+    :param ib_d: the IB object after analysed
+    :return: None, save the plot in the same directory
+    """
     #plot_axis = [1, max(beta_values), 0,max(max(full_distances))*1.10]
-    plot_axis = [200, 6000, 0,0.005]
     #plot_axis = [1000, 5000, 0,0.015]
 
     # plot bifrucation diagram:
     plt.figure(figsize=(30,30))
     plt.rcParams["figure.figsize"]=30,30
     fd = np.array(ib_d.full_distances)
+
+    plot_axis = [(max(ib_d.beta_values)*(0.99)**np.where(~ib_d.clusters_matrix.any(axis=1))[0][0]) - 50,
+                                                                max(ib_d.beta_values), 0, fd.max() + 0.0002]
 
     ## separate white:
     #for idx in range(fd.shape[1]):
@@ -194,36 +240,172 @@ def plot_results(ib_d):
     #        fd[:500,idx] = -fd[:500,idx]
 
     for idx in range(fd.shape[1]):
-        plt.plot(ib_d.beta_values[::-1],fd[:,idx],linewidth=3)
+        plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
 
     #plot legend
     for idx in range(ib_d.p_y_x_hat.shape[1]):
-        text_condition = fd[0,idx] < plot_axis[3]
-        text_condition = False
+        # text_condition = fd[0,idx] < plot_axis[3]
+        text_condition = True
         if not(fd[0,idx] == np.inf):
             if text_condition:
                 if ib_d.analyse_by_areas:
-                    plt.text(plot_axis[1]*1.05, fd[0,idx],ib_d.area_names[idx],fontsize=15) #,rotation=45,rotation_mode = "anchor")
+                    plt.text(plot_axis[1]*1.05, fd[0,idx],ib_d.area_names[idx],fontsize=20,rotation=45,rotation_mode = "anchor")
                 else:
-                    plt.text(plot_axis[1]*1.05, fd[0,idx],subj_to_text(ib_d.subjects[idx]),fontsize=15) #,rotation=45,rotation_mode = "anchor")
+                    plt.text(plot_axis[1]*1.05, fd[0,idx],subj_to_text(ib_d.subjects[idx]),fontsize=20,rotation=45,rotation_mode = "anchor")
 
-    plt.title('R2s')
+    plt.title(ib_d.name_of_scan, fontsize=20)
     plt.xscale("log")
-    plt.xlabel('beta')
-    plt.ylabel('Dkl to mean')
+    plt.xlabel('beta', fontsize=20)
+    plt.ylabel('Dkl to mean', fontsize=20)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\MTV.png')
+    plt.savefig(str(ib_d.name_of_scan) + ".png")
+
+
+def load_analysed_data(name_of_file) -> IB:
+    """
+    load analysed data to IB object.
+    :return: IB object of analysed data.
+    """
+    with open(name_of_file, 'rb') as ib_data:
+        ib_data = pickle.load(ib_data)
+    return ib_data
+
+
+def main_analyze():
+    input_matrixes, subjects, regions, area_names, area_types = \
+        load_data('huji_data.mat')
+    beta_values = generate_beta(2600, 800)
+    for i, cluster_name in enumerate(CLUSTERS):
+        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
+        ib_data.run_analysis(ANALYSE_BY_PEOPLE)
+
+
+def pre_pros(ib_data):
+    def find_multi(tt, x):
+        return [i for i, y in enumerate(tt) if y == x]
+
+    tt = np.array(ib_data.clusters_matrix)
+    num = tt.shape[1]
+    idx_lst = list(range(num))
+    cntr = num
+    print(idx_lst)
+    Z = []
+    running_idx = 1
+
+    def clus_iter(tt, cntr, idx_lst, iter_num, Z, running_idx):
+        pp = list(tt[iter_num, :])
+        for x in set(pp):
+            if list(pp).count(x) > 1 and x != -1:
+                idxs = find_multi(pp, x)
+                if len(idxs) > 2:
+                    print('oops', idxs)
+                tt[:, idxs[0]] = -1
+                print('merge ' + str(idx_lst[idxs[1]]) + ' and ' + str(idx_lst[idxs[0]]) + ' into ' + str(cntr))
+                Z.append([idx_lst[idxs[1]], idx_lst[idxs[0]], iter_num, running_idx])
+                idx_lst[idxs[1]] = cntr
+                idx_lst[idxs[0]] = cntr
+                cntr += 1
+                running_idx += 1
+
+        return tt, cntr, idx_lst, Z, running_idx
+
+    # print(tt.shape[0])
+
+    # for idx in range(-1,-tt.shape[0]-1,-1):
+    for idx in range(tt.shape[0]):
+        tt, cntr, idx_lst, Z, running_idx = clus_iter(tt, cntr, idx_lst, idx, Z, running_idx)
+
+    Z = np.array(Z, dtype='double')
+    # print(tt[-16,:])
+    # print(tt[-20,:])
+    # print(idx_lst)
+
+    # print(area_names[19])
+    print(Z)
+    Z[:, 2] = Z[:, 2] - min(Z[:, 2])
+
+    for i in range(Z.shape[0]):
+        Z[i, 2] = i * 5
+        # if Z[i,0] > 27:
+        #    Z[i,0] = Z[i,0] - 1
+        # if Z[i,1] > 27:
+        #    Z[i,1] = Z[i,1] - 1
+
+    # Z = Z[:-1,:]
+    # print(Z)
+
+def plot_hierarchy(ib_data):
+    matplotlib.rcParams['lines.linewidth'] = 5
+
+    fig, ax = plt.subplots(1, 1)
+    ax.set_title(ib_data.name_of_scan, fontsize=30)
+    fig.set_size_inches(16, 8)
+    # dn = hierarchy.dendrogram(Z,labels=area_names,leaf_rotation=-80, ax=ax)
+    if ib_data.analyse_by_areas:
+        dn = hierarchy.dendrogram(Z, labels=ib_data.area_names, ax=ax, orientation='right', color_threshold=160,
+                                  above_threshold_color='k')
+        # dn = hierarchy.dendrogram(Z,labels=area_names, ax=ax, color_threshold = 160,above_threshold_color='k',leaf_rotation=-80)
+    else:
+        # dn = hierarchy.dendrogram(Z,labels=[subj_to_text(x) for x in subjects[contrast]],orientation = 'right',leaf_rotation=-80, ax=ax)
+        dn = hierarchy.dendrogram(Z, labels=[subj_to_text(x) for x in ib_data.subjects],
+                                  ax=ax, leaf_rotation=-80, color_threshold=205, above_threshold_color='k')
+        # dn = hierarchy.dendrogram(Z,labels=[subj_to_text(x) for x in subjects[contrast]],
+        #                          ax=ax,color_threshold = 300, above_threshold_color='k',orientation = 'right')
+    # dn = hierarchy.dendrogram(Z,labels=area_names, ax=ax)
+    # dn = hierarchy.dendrogram(Z,leaf_rotation=-80, ax=ax)
+    # ax.tick_params(axis='x',which = 'major', labelsize=15)
+    ax.tick_params(axis='y', which='major', labelsize=13)
+    plt.tight_layout()
+
+    # hierarchy.set_link_color_palette(['#045a8d', '#2b8cbe', '#74a9cf', '#a6bddb'])
+    # hierarchy.set_link_color_palette(['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462'][::-1])
+    # hierarchy.set_link_color_palette(['#66c2a5','#fc8d62','#8da0cb','#e78ac3'][::-1])
+    # hierarchy.set_link_color_palette(['#993404','#406020','#fd8d3c','#732673'][::-1])
+    hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
+    # bordo: a2142e
+    # orange: d95319
+    # yellow: eeb220
+
+    # region_color = {'other':'k','bg':'y','limbic':'b','ctx':'r','wm':'g'}
+    # region_color = {'other':'k','bg':'#1f78b4','limbic':'k','ctx':'#e31a1c','wm':'#33a02c'}
+    region_color = {'other': '#aaaaaa', 'bg': '#aaaaaa', 'limbic': '#aaaaaa', 'ctx': '#636363', 'wm': 'k'}
+
+    # if analyse_areas:
+    #     for ticklabel in plt.gca().get_yticklabels():
+    #         ticklabel.set_color(region_color[region[ticklabel.get_text()]])
+    #     plt.tick_params(
+    #         axis='x',          # changes apply to the x-axis
+    #         which='both',      # both major and minor ticks are affected
+    #         bottom=False,      # ticks along the bottom edge are off
+    #         top=False,         # ticks along the top edge are off
+    #         labelbottom=False)
+    #     plt.xlabel('Clustering level')
+    # else:
+    #     for ticklabel in plt.gca().get_yticklabels():
+    #         if int(subjects[contrast][int(ticklabel.get_text())][1])>50:
+    #         #if int(ticklabel.get_text()[5:7])>50:
+    #             ticklabel.set_color('#636363')
+    #         else:
+    #             ticklabel.set_color('k')
+    #             ticklabel.set_fontweight('bold')
+
+    # hierarchy.set_link_color_palette(None)
+    # print([subj_to_text(x) for x in subjects[contrast]])
+    # plt.savefig('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\IB\\MTV_for_grant4.png')
+    # plt.savefig('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\grant\\MTV_areas4.png')
+    # plt.savefig('D:\\ELSC\\Aviv\\Tali\\grant\\new_MTV_6.png')
 
 
 def main():
-    input_matrixes, subjects, regions, area_names, area_types = \
-                load_data('C:\\Users\\nitai seri\\Desktop\\study\\university\\year3\\Lab\\IB-for-MRI\\huji_data.mat')
-    beta_values = generate_beta(10000, 800)
-    ib_data = IB(input_matrixes[MTV], beta_values, subjects[MTV], regions, True, area_names, area_types)
-    ib_data.run_analysis()
-    plot_results(ib_data)
+    for i, cluster_name in enumerate(CLUSTERS):
+        ib_data = load_analysed_data(cluster_name)
+        plot_results(ib_data)
 
 
-main()
+
+
+
 
 
