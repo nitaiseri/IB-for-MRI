@@ -198,7 +198,7 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open(name_of_file + "-" + type_of_cluster, 'wb') as ib_data_after_analysis:
+        with open("data\\" + name_of_file + "-" + type_of_cluster + "15000", 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "Done")
 
@@ -252,23 +252,23 @@ def plot_convergence_Dkl(ib_d):
     plt.savefig(str(ib_d.name_of_scan) + ".png")
 
 
-def load_analysed_data(name_of_file, type_of_analysis) -> IB:
+def load_analysed_data(name_of_file) -> IB:
     """
     load analysed data to IB object.
     :return: IB object of analysed data.
     """
-    with open(name_of_file+"-"+type_of_analysis, 'rb') as ib_data:
+    with open(name_of_file, 'rb') as ib_data:
         ib_data = pickle.load(ib_data)
     return ib_data
 
 
-def main_analyze(beta_max):
+def main_analyze(beta_max, analys_by):
     input_matrixes, subjects, regions, area_names, area_types = \
         load_data('huji_data.mat')
     beta_values = generate_beta(beta_max, 800)
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name + "beta_max-" + str(beta_max))
-        ib_data.run_analysis(ANALYSE_BY_PEOPLE)
+        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
+        ib_data.run_analysis(analys_by)
 
 
 def pre_pros(ib_data):
@@ -334,12 +334,10 @@ def plot_hierarchy(ib_data, Z):
 
 
 def main():
-    for beta_max in [2000, 2500, 3000, 3500]:
-        main_analyze(beta_max)
+    main_analyze(15000, ANALYSE_BY_AREAS)
     for i, cluster_name in enumerate(CLUSTERS):
-        for beta_max in [2000, 2500, 3000, 3500]:
-
-            ib_data = load_analysed_data(cluster_name+ "beta_max-" + str(beta_max), f'{ANALYSE_BY_PEOPLE=}'.split("=")[0])
-            # plot_convergence_Dkl(ib_data)
-            plot_hierarchy(ib_data, pre_pros(ib_data))
+    #     for beta_max in [2000, 2500, 3000, 3500]:
+        ib_data = load_analysed_data("data\\" + cluster_name + "-" f'{ANALYSE_BY_AREAS=}'.split("=")[0] + "15000")
+             # plot_convergence_Dkl(ib_data)
+        plot_hierarchy(ib_data, pre_pros(ib_data))
 main()
