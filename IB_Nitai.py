@@ -160,9 +160,9 @@ class IB:
         """
         p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
 
-        self.beta_values = self.beta_values
-
         for beta in self.beta_values:
+            # if beta == 2963.8658739920816:
+            #     breakpoint()
             err = 1
             index = 0
             while err > (1 / beta) / 10:
@@ -172,8 +172,6 @@ class IB:
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
-            if np.isnan(np.min(p_x_hat)) or np.isnan(np.min(p_x_hat_given_x)) or np.isnan(np.min(p_x)):
-                a = 1
             p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
@@ -216,28 +214,19 @@ def subj_to_text(subj):
     return 'Age: ' + subj[1] + ' (' + subj[2] + ')'
 
 
-def plot_results(ib_d):
+def plot_convergence_Dkl(ib_d):
     """
     visualisation plot to see convergence of kl distance of each cluster from mean over beta.
     :param ib_d: the IB object after analysed
     :return: None, save the plot in the same directory
     """
-    #plot_axis = [1, max(beta_values), 0,max(max(full_distances))*1.10]
-    #plot_axis = [1000, 5000, 0,0.015]
 
-    # plot bifrucation diagram:
     plt.figure(figsize=(30,30))
     plt.rcParams["figure.figsize"]=30,30
     fd = np.array(ib_d.full_distances)
 
     plot_axis = [(max(ib_d.beta_values)*(0.99)**np.where(~ib_d.clusters_matrix.any(axis=1))[0][0]) - 50,
                                                                 max(ib_d.beta_values), 0, fd.max() + 0.0002]
-
-    ## separate white:
-    #for idx in range(fd.shape[1]):
-        #if 'wm' in area_names[idx] or 'White' in area_names[idx] or area_names[idx] == 'CC':
-        #if 'ctx' in area_names[idx]:
-    #        fd[:500,idx] = -fd[:500,idx]
 
     for idx in range(fd.shape[1]):
         plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
@@ -263,22 +252,22 @@ def plot_results(ib_d):
     plt.savefig(str(ib_d.name_of_scan) + ".png")
 
 
-def load_analysed_data(name_of_file) -> IB:
+def load_analysed_data(name_of_file, type_of_analysis) -> IB:
     """
     load analysed data to IB object.
     :return: IB object of analysed data.
     """
-    with open(name_of_file, 'rb') as ib_data:
+    with open(name_of_file+"-"+type_of_analysis, 'rb') as ib_data:
         ib_data = pickle.load(ib_data)
     return ib_data
 
 
-def main_analyze():
+def main_analyze(beta_max):
     input_matrixes, subjects, regions, area_names, area_types = \
         load_data('huji_data.mat')
-    beta_values = generate_beta(2600, 800)
+    beta_values = generate_beta(beta_max, 800)
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
+        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name + "beta_max-" + str(beta_max))
         ib_data.run_analysis(ANALYSE_BY_PEOPLE)
 
 
@@ -286,57 +275,43 @@ def pre_pros(ib_data):
     def find_multi(tt, x):
         return [i for i, y in enumerate(tt) if y == x]
 
-    tt = np.array(ib_data.clusters_matrix)
+    tt = ib_data.clusters_matrix
     num = tt.shape[1]
     idx_lst = list(range(num))
     cntr = num
-    print(idx_lst)
     Z = []
     running_idx = 1
 
-    def clus_iter(tt, cntr, idx_lst, iter_num, Z, running_idx):
-        pp = list(tt[iter_num, :])
-        for x in set(pp):
-            if list(pp).count(x) > 1 and x != -1:
-                idxs = find_multi(pp, x)
-                if len(idxs) > 2:
-                    print('oops', idxs)
-                tt[:, idxs[0]] = -1
-                print('merge ' + str(idx_lst[idxs[1]]) + ' and ' + str(idx_lst[idxs[0]]) + ' into ' + str(cntr))
-                Z.append([idx_lst[idxs[1]], idx_lst[idxs[0]], iter_num, running_idx])
-                idx_lst[idxs[1]] = cntr
-                idx_lst[idxs[0]] = cntr
-                cntr += 1
-                running_idx += 1
+    def clus_iter(tt, cntr, idx_lst, Z, running_idx):
+        for idx in range(len(ib_data.beta_values)):
+            pp = list(tt[idx])
+            for x in set(pp):
+                if list(pp).count(x) > 1 and x != -1:
+                    idxs = find_multi(pp, x)
+                    if len(idxs) > 2:
+                        print('oops', idxs)
+                    tt[:, idxs[0]] = -1
+                    # print('merge ' + str(idx_lst[idxs[1]]) + ' and ' + str(idx_lst[idxs[0]]) + ' into ' + str(cntr))
+                    Z.append([idx_lst[idxs[1]], idx_lst[idxs[0]], idx, running_idx])
+                    idx_lst[idxs[1]] = cntr
+                    idx_lst[idxs[0]] = cntr
+                    cntr += 1
+                    running_idx += 1
 
         return tt, cntr, idx_lst, Z, running_idx
 
-    # print(tt.shape[0])
-
-    # for idx in range(-1,-tt.shape[0]-1,-1):
-    for idx in range(tt.shape[0]):
-        tt, cntr, idx_lst, Z, running_idx = clus_iter(tt, cntr, idx_lst, idx, Z, running_idx)
+    tt, cntr, idx_lst, Z, running_idx = clus_iter(tt, cntr, idx_lst, Z, running_idx)
 
     Z = np.array(Z, dtype='double')
-    # print(tt[-16,:])
-    # print(tt[-20,:])
-    # print(idx_lst)
-
-    # print(area_names[19])
-    print(Z)
     Z[:, 2] = Z[:, 2] - min(Z[:, 2])
 
     for i in range(Z.shape[0]):
         Z[i, 2] = i * 5
-        # if Z[i,0] > 27:
-        #    Z[i,0] = Z[i,0] - 1
-        # if Z[i,1] > 27:
-        #    Z[i,1] = Z[i,1] - 1
 
-    # Z = Z[:-1,:]
-    # print(Z)
+    return Z
 
-def plot_hierarchy(ib_data):
+
+def plot_hierarchy(ib_data, Z):
     matplotlib.rcParams['lines.linewidth'] = 5
 
     fig, ax = plt.subplots(1, 1)
@@ -346,66 +321,25 @@ def plot_hierarchy(ib_data):
     if ib_data.analyse_by_areas:
         dn = hierarchy.dendrogram(Z, labels=ib_data.area_names, ax=ax, orientation='right', color_threshold=160,
                                   above_threshold_color='k')
-        # dn = hierarchy.dendrogram(Z,labels=area_names, ax=ax, color_threshold = 160,above_threshold_color='k',leaf_rotation=-80)
     else:
         # dn = hierarchy.dendrogram(Z,labels=[subj_to_text(x) for x in subjects[contrast]],orientation = 'right',leaf_rotation=-80, ax=ax)
-        dn = hierarchy.dendrogram(Z, labels=[subj_to_text(x) for x in ib_data.subjects],
+        dn = hierarchy.dendrogram(Z, labels=np.array([subj_to_text(x) for x in ib_data.subjects]),
                                   ax=ax, leaf_rotation=-80, color_threshold=205, above_threshold_color='k')
-        # dn = hierarchy.dendrogram(Z,labels=[subj_to_text(x) for x in subjects[contrast]],
-        #                          ax=ax,color_threshold = 300, above_threshold_color='k',orientation = 'right')
-    # dn = hierarchy.dendrogram(Z,labels=area_names, ax=ax)
-    # dn = hierarchy.dendrogram(Z,leaf_rotation=-80, ax=ax)
-    # ax.tick_params(axis='x',which = 'major', labelsize=15)
     ax.tick_params(axis='y', which='major', labelsize=13)
     plt.tight_layout()
 
-    # hierarchy.set_link_color_palette(['#045a8d', '#2b8cbe', '#74a9cf', '#a6bddb'])
-    # hierarchy.set_link_color_palette(['#8dd3c7','#ffffb3','#bebada','#fb8072','#80b1d3','#fdb462'][::-1])
-    # hierarchy.set_link_color_palette(['#66c2a5','#fc8d62','#8da0cb','#e78ac3'][::-1])
-    # hierarchy.set_link_color_palette(['#993404','#406020','#fd8d3c','#732673'][::-1])
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    # bordo: a2142e
-    # orange: d95319
-    # yellow: eeb220
-
-    # region_color = {'other':'k','bg':'y','limbic':'b','ctx':'r','wm':'g'}
-    # region_color = {'other':'k','bg':'#1f78b4','limbic':'k','ctx':'#e31a1c','wm':'#33a02c'}
-    region_color = {'other': '#aaaaaa', 'bg': '#aaaaaa', 'limbic': '#aaaaaa', 'ctx': '#636363', 'wm': 'k'}
-
-    # if analyse_areas:
-    #     for ticklabel in plt.gca().get_yticklabels():
-    #         ticklabel.set_color(region_color[region[ticklabel.get_text()]])
-    #     plt.tick_params(
-    #         axis='x',          # changes apply to the x-axis
-    #         which='both',      # both major and minor ticks are affected
-    #         bottom=False,      # ticks along the bottom edge are off
-    #         top=False,         # ticks along the top edge are off
-    #         labelbottom=False)
-    #     plt.xlabel('Clustering level')
-    # else:
-    #     for ticklabel in plt.gca().get_yticklabels():
-    #         if int(subjects[contrast][int(ticklabel.get_text())][1])>50:
-    #         #if int(ticklabel.get_text()[5:7])>50:
-    #             ticklabel.set_color('#636363')
-    #         else:
-    #             ticklabel.set_color('k')
-    #             ticklabel.set_fontweight('bold')
-
-    # hierarchy.set_link_color_palette(None)
-    # print([subj_to_text(x) for x in subjects[contrast]])
-    # plt.savefig('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\IB\\MTV_for_grant4.png')
-    # plt.savefig('C:\\Users\\Yoav\\Desktop\\ELSC\\Aviv\\Tali\\grant\\MTV_areas4.png')
-    # plt.savefig('D:\\ELSC\\Aviv\\Tali\\grant\\new_MTV_6.png')
+    plt.savefig(str(ib_data.name_of_scan) +"-people-hierarchy" + ".png")
+    # plt.show()
 
 
 def main():
+    for beta_max in [2000, 2500, 3000, 3500]:
+        main_analyze(beta_max)
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data(cluster_name)
-        plot_results(ib_data)
+        for beta_max in [2000, 2500, 3000, 3500]:
 
-
-
-
-
-
-
+            ib_data = load_analysed_data(cluster_name+ "beta_max-" + str(beta_max), f'{ANALYSE_BY_PEOPLE=}'.split("=")[0])
+            # plot_convergence_Dkl(ib_data)
+            plot_hierarchy(ib_data, pre_pros(ib_data))
+main()
