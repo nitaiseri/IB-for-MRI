@@ -13,7 +13,7 @@ ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
 
 
-def generate_beta(max_value = 20000, length = 800):
+def generate_beta(max_value = 20000, length = 800, bad_betas = None):
     """
     function to generate list of decreasing beta's
     :param max_value: first beta value
@@ -21,8 +21,16 @@ def generate_beta(max_value = 20000, length = 800):
     :return: list of the beta's
     """
     beta_values = [max_value]
-    for idx in range(length-1):
-        beta_values.append(beta_values[-1]*0.99)
+    if not bad_betas:
+        for idx in range(length-1):
+            beta_values.append(beta_values[-1]*0.99)
+    else:
+        bad_betas = bad_betas - 1
+        for idx in range(length-1):
+            if idx in bad_betas:
+                beta_values.append(beta_values[-1]*0.999)
+            else:
+                beta_values.append(beta_values[-1] * 0.99)
     return beta_values
 
 
@@ -185,6 +193,13 @@ class IB:
         self.clusters_matrix = np.array(self.clusters_matrix)
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
+        bad_betas = self.find_more_then_one()
+        if bad_betas:
+            self.beta_values = generate_beta(self.beta_values[0], 800, bad_betas)
+            self.clusters_matrix = []
+            self.full_distances = []
+            self.clus = []
+            self.get_clusters()
 
     def run_analysis(self, which_ax = ANALYSE_BY_AREAS, name_of_file = None):
         """
@@ -193,6 +208,7 @@ class IB:
         :param which_ax: boolean that represent over which axes the algorithm gonna run.
         :return: None
         """
+        self.beta_values = generate_beta(self.find_beta_max(), 800)
         type_of_cluster = f'{ANALYSE_BY_AREAS=}'.split('=')[0] if which_ax else f'{ANALYSE_BY_PEOPLE=}'.split('=')[0]
         self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
@@ -229,8 +245,16 @@ class IB:
             beta += 500
 
     def find_more_then_one(self):
-        pass
-
+        bad_betas = []
+        for idx in range(len(self.beta_values)):
+            cur_cluster = list(self.clusters_matrix[idx])
+            for x in set(cur_cluster):
+                if list(cur_cluster).count(x) > 1 and x != -1:
+                    idxs = [i for i, y in enumerate(cur_cluster) if y == x]
+                    if len(idxs) > 2:
+                        bad_betas.append(idx)
+                        break
+        return bad_betas
 
 ## Plot results:
 def subj_to_text(subj):
@@ -286,7 +310,7 @@ def load_analysed_data(name_of_file) -> IB:
     load analysed data to IB object.
     :return: IB object of analysed data.
     """
-    with open(name_of_file+"-"+type_of_analysis, 'rb') as ib_data:
+    with open(name_of_file, 'rb') as ib_data:
         ib_data = pickle.load(ib_data)
     return ib_data
 
