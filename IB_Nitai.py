@@ -334,12 +334,13 @@ def plot_hierarchy(ib_data, Z):
 
 
 def main():
-    for beta_max in [2000, 2500, 3000, 3500]:
-        main_analyze(beta_max)
+
+        # main_analyze(beta_max)
     for i, cluster_name in enumerate(CLUSTERS):
         for beta_max in [2000, 2500, 3000, 3500]:
 
             ib_data = load_analysed_data(cluster_name+ "beta_max-" + str(beta_max), f'{ANALYSE_BY_PEOPLE=}'.split("=")[0])
             # plot_convergence_Dkl(ib_data)
             plot_hierarchy(ib_data, pre_pros(ib_data))
+
 main()
