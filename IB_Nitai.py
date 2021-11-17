@@ -5,7 +5,9 @@ from scipy.cluster import hierarchy
 import matplotlib
 import pickle
 
-CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+# CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+CLUSTERS = ["MD"]
+END_NAME = "beta_max"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
@@ -191,6 +193,7 @@ class IB:
         :param which_ax: boolean that represent over which axes the algorithm gonna run.
         :return: None
         """
+        self.beta_values = generate_beta(self.find_beta_max(), 800)
         type_of_cluster = f'{ANALYSE_BY_AREAS=}'.split('=')[0] if which_ax else f'{ANALYSE_BY_PEOPLE=}'.split('=')[0]
         self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
@@ -198,9 +201,36 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data\\" + name_of_file + "-" + type_of_cluster + "15000", 'wb') as ib_data_after_analysis:
+        with open("data\\" + name_of_file + "-" + type_of_cluster + END_NAME, 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
-        print(str(self.name_of_scan) + "Done")
+        print(str(self.name_of_scan) + "-Done")
+
+    def find_beta_max(self):
+        beta = 3000
+        found_beta = False
+        while True:
+            p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
+            err = 1
+            index = 0
+            while err > (1 / beta) :
+                prev_p = p_x_hat_given_x
+                p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
+                err = np.sum(abs(prev_p - p_x_hat_given_x))
+                index += 1
+
+            p_x_hat = p_x_hat_given_x @ p_x
+            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+
+            p_y_x_hat = p_y_x @ p_x_given_x_hat
+            rank = np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10)
+            if rank == self.input_matrix.shape[0]:
+                if found_beta:
+                    return beta
+                found_beta = True
+            beta += 500
+
+    def find_more_then_one(self):
+        pass
 
 
 ## Plot results:
@@ -249,7 +279,7 @@ def plot_convergence_Dkl(ib_d):
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig(str(ib_d.name_of_scan) + ".png")
+    plt.savefig(str(ib_d.name_of_scan) + "convergence-" + END_NAME +".png")
 
 
 def load_analysed_data(name_of_file) -> IB:
@@ -329,15 +359,15 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig(str(ib_data.name_of_scan) +"-people-hierarchy" + ".png")
+    plt.savefig(str(ib_data.name_of_scan) +"-people-hierarchy-"+ END_NAME + ".png")
     # plt.show()
 
 
 def main():
-    main_analyze(15000, ANALYSE_BY_AREAS)
+    # main_analyze(30000, ANALYSE_BY_AREAS)
     for i, cluster_name in enumerate(CLUSTERS):
-    #     for beta_max in [2000, 2500, 3000, 3500]:
-        ib_data = load_analysed_data("data\\" + cluster_name + "-" f'{ANALYSE_BY_AREAS=}'.split("=")[0] + "15000")
-             # plot_convergence_Dkl(ib_data)
+        ib_data = load_analysed_data("data\\" + cluster_name + "-" f'{ANALYSE_BY_AREAS=}'.split("=")[0] + END_NAME)
+    #     plot_convergence_Dkl(ib_data)
+        breakpoint()
         plot_hierarchy(ib_data, pre_pros(ib_data))
 main()
