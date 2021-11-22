@@ -6,9 +6,10 @@ import matplotlib
 import pickle
 
 # CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-CLUSTERS = ["R1", "MD", "R2", "R2s"]
+CLUSTERS = ["MTV"]
+CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
 NUM_OF_BETA = 400
-END_NAME = "beta_max"
+END_NAME = "beta_nan"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
@@ -76,13 +77,13 @@ def load_data(path):
     subjects = {}
     region = {}
 
-    with open('gender.txt') as f:
+    with open('raw_data/gender.txt') as f:
         gender = f.read().splitlines()
-    with open('age.txt') as f:
+    with open('raw_data/age.txt') as f:
         age = f.read().splitlines()
-    with open('area_names2.txt') as f:
+    with open('raw_data/area_names2.txt') as f:
         area_names = f.read().splitlines()
-    with open('area_types.txt') as f:
+    with open('raw_data/area_types.txt') as f:
         area_types = f.read().splitlines()
 
     subj_id = [str(x + 1) for x in range(45)]
@@ -180,31 +181,42 @@ class IB:
             index = 0
             while err > (1 / beta) / 10:
                 prev_p = p_x_hat_given_x
+
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
+                if p_x_hat_given_x[29][0] == 0:
+                    breakpoint()
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
             p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+            if np.any(np.isnan(p_x_given_x_hat)):
+                breakpoint()
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
             self.full_distances.append(D_kl_vec(p_y_x_hat))
-            self.clus.append(np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10))
+            self.clus.append(np.linalg.matrix_rank(p_x_given_x_hat, tol=(1 / beta) / 10))
             t, indices = np.unique(p_x_given_x_hat.round(decimals=int(np.ceil(np.log10(10 * beta)))), axis=1,
                                    return_inverse=True)
             self.clusters_matrix.append(indices)
         self.clusters_matrix = np.array(self.clusters_matrix)
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
-        # bad_betas = self.find_more_then_one()
-        # if bad_betas:
-        #     self.beta_values = generate_beta(self.beta_values[0], NUM_OF_BETA, bad_betas)
-        #     self.clusters_matrix = []
-        #     self.full_distances = []
-        #     self.clus = []
-        #     self.get_clusters()
+        bad_betas = self.find_more_then_one()
+        if len(bad_betas)>1:
+            counter = 0
+            for inx in bad_betas:
+                inx += counter
+                for i in range(1, 11):
+                    self.beta_values.insert(inx + i, self.beta_values[inx] - i*(self.beta_values[inx]-self.beta_values[inx+i])/10)
+                    counter += 1
+            self.beta_values = self.beta_values[:NUM_OF_BETA]
+            self.clusters_matrix = []
+            self.full_distances = []
+            self.clus = []
+            self.get_clusters()
 
-    def run_analysis(self, which_ax = ANALYSE_BY_AREAS, name_of_file = None):
+    def run_analysis(self, which_ax=ANALYSE_BY_AREAS, name_of_file=None):
         """
         decide over which axes run the algorithm and run get_clusters, and save the object after analyse the data.
         :param name_of_file: name of the object file to save.
@@ -214,16 +226,16 @@ class IB:
         self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
             self.input_matrix = self.input_matrix.T
-        if not self.beta_max:
+        if not self.beta_values:
             self.beta_values = generate_beta(self.find_beta_max(), NUM_OF_BETA)
             self.beta_max = self.beta_values[0]
-        else:
-            self.beta_values = generate_beta(self.beta_max, NUM_OF_BETA)
+        # else:
+        #     self.beta_values = generate_beta(self.beta_max, NUM_OF_BETA)
         self.analyse_by_areas = which_ax
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data\\" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME, 'wb') as ib_data_after_analysis:
+        with open("data/" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME, 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
@@ -244,11 +256,11 @@ class IB:
             p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
-            rank = np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10)
+            rank = np.linalg.matrix_rank(p_x_given_x_hat, tol=(1 / beta) / 10)
             if rank == self.input_matrix.shape[1]:
-                if found_beta:
+                # if found_beta:
                     return beta
-                found_beta = True
+                # found_beta = True
             beta += 500
 
     def find_more_then_one(self):
@@ -261,7 +273,7 @@ class IB:
                     if len(idxs) > 2:
                         bad_betas.append(idx)
                     self.clusters_matrix[:, idxs[0]] = -1
-        return bad_betas
+        return set(bad_betas)
 
 ## Plot results:
 def subj_to_text(subj):
@@ -309,7 +321,7 @@ def plot_convergence_Dkl(ib_d):
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig(str(ib_d.name_of_scan) + "convergence-" + END_NAME +".png")
+    plt.savefig("plots/" + str(ib_d.name_of_scan) + "convergence-" + END_NAME +".png")
 
 
 def load_analysed_data(name_of_file) -> IB:
@@ -324,10 +336,11 @@ def load_analysed_data(name_of_file) -> IB:
 
 def main_analyze(beta_max, analys_by):
     input_matrixes, subjects, regions, area_names, area_types = \
-        load_data('huji_data.mat')
+        load_data('raw_data/huji_data.mat')
     beta_values = generate_beta(beta_max, NUM_OF_BETA)
-    for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
+    # beta_values = None
+    for cluster_name in CLUSTERS:
+        ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions, area_names, area_types, beta_values, cluster_name)
         ib_data.run_analysis(analys_by)
 
 
@@ -389,15 +402,16 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig(str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
+    plt.savefig("plots/" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
     # plt.show()
 
 
 def main():
-    main_analyze(30000, ANALYSE_BY_PEOPLE)
+    main_analyze(3500, ANALYSE_BY_PEOPLE)
     # for i, cluster_name in enumerate(CLUSTERS):
-    #     ib_data = load_analysed_data("data\\" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+    #     ib_data = load_analysed_data("data/" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+    #     breakpoint()
+    #     plot_hierarchy(ib_data, pre_pros(ib_data))
         # plot_convergence_Dkl(ib_data)
-        # breakpoint()
-        # plot_hierarchy(ib_data, pre_pros(ib_data))
+
 main()
