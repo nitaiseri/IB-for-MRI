@@ -6,14 +6,16 @@ import matplotlib
 import pickle
 
 # CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-CLUSTERS = ["MD"]
+CLUSTERS = ["R1", "MD", "R2", "R2s"]
+NUM_OF_BETA = 400
 END_NAME = "beta_max"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
+ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
 
 
-def generate_beta(max_value = 20000, length = 800, bad_betas = None):
+def generate_beta(max_value = 20000, length = NUM_OF_BETA, bad_betas = None):
     """
     function to generate list of decreasing beta's
     :param max_value: first beta value
@@ -24,13 +26,13 @@ def generate_beta(max_value = 20000, length = 800, bad_betas = None):
     if not bad_betas:
         for idx in range(length-1):
             beta_values.append(beta_values[-1]*0.99)
-    else:
-        bad_betas = bad_betas - 1
-        for idx in range(length-1):
-            if idx in bad_betas:
-                beta_values.append(beta_values[-1]*0.999)
-            else:
-                beta_values.append(beta_values[-1] * 0.99)
+    # else:
+    #     bad_betas = bad_betas - 1
+    #     for idx in range(length-1):
+    #         if idx in bad_betas:
+    #             beta_values.append(beta_values[-1]*0.999)
+    #         else:
+    #             beta_values.append(beta_values[-1] * 0.99)
     return beta_values
 
 
@@ -114,6 +116,7 @@ class IB:
     class for MRI's data for the iterative IB algorithm.
     """
     def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan):
+        self.beta_max = None
         self.name_of_scan = name_of_scan
         self.beta_values = beta_values
         self.analyse_by_areas = ANALYSE_BY_AREAS
@@ -193,13 +196,13 @@ class IB:
         self.clusters_matrix = np.array(self.clusters_matrix)
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
-        bad_betas = self.find_more_then_one()
-        if bad_betas:
-            self.beta_values = generate_beta(self.beta_values[0], 800, bad_betas)
-            self.clusters_matrix = []
-            self.full_distances = []
-            self.clus = []
-            self.get_clusters()
+        # bad_betas = self.find_more_then_one()
+        # if bad_betas:
+        #     self.beta_values = generate_beta(self.beta_values[0], NUM_OF_BETA, bad_betas)
+        #     self.clusters_matrix = []
+        #     self.full_distances = []
+        #     self.clus = []
+        #     self.get_clusters()
 
     def run_analysis(self, which_ax = ANALYSE_BY_AREAS, name_of_file = None):
         """
@@ -208,20 +211,24 @@ class IB:
         :param which_ax: boolean that represent over which axes the algorithm gonna run.
         :return: None
         """
-        self.beta_values = generate_beta(self.find_beta_max(), 800)
-        type_of_cluster = f'{ANALYSE_BY_AREAS=}'.split('=')[0] if which_ax else f'{ANALYSE_BY_PEOPLE=}'.split('=')[0]
         self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
             self.input_matrix = self.input_matrix.T
+        if not self.beta_max:
+            self.beta_values = generate_beta(self.find_beta_max(), NUM_OF_BETA)
+            self.beta_max = self.beta_values[0]
+        else:
+            self.beta_values = generate_beta(self.beta_max, NUM_OF_BETA)
+        self.analyse_by_areas = which_ax
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data\\" + name_of_file + "-" + type_of_cluster + END_NAME, 'wb') as ib_data_after_analysis:
+        with open("data\\" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME, 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
     def find_beta_max(self):
-        beta = 3000
+        beta = 5000
         found_beta = False
         while True:
             p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
@@ -238,7 +245,7 @@ class IB:
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
             rank = np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10)
-            if rank == self.input_matrix.shape[0]:
+            if rank == self.input_matrix.shape[1]:
                 if found_beta:
                     return beta
                 found_beta = True
@@ -253,7 +260,7 @@ class IB:
                     idxs = [i for i, y in enumerate(cur_cluster) if y == x]
                     if len(idxs) > 2:
                         bad_betas.append(idx)
-                        break
+                    self.clusters_matrix[:, idxs[0]] = -1
         return bad_betas
 
 ## Plot results:
@@ -318,7 +325,7 @@ def load_analysed_data(name_of_file) -> IB:
 def main_analyze(beta_max, analys_by):
     input_matrixes, subjects, regions, area_names, area_types = \
         load_data('huji_data.mat')
-    beta_values = generate_beta(beta_max, 800)
+    beta_values = generate_beta(beta_max, NUM_OF_BETA)
     for i, cluster_name in enumerate(CLUSTERS):
         ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
         ib_data.run_analysis(analys_by)
@@ -382,15 +389,15 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig(str(ib_data.name_of_scan) +"-people-hierarchy-"+ END_NAME + ".png")
+    plt.savefig(str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
     # plt.show()
 
 
 def main():
-    # main_analyze(30000, ANALYSE_BY_AREAS)
-    for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data("data\\" + cluster_name + "-" f'{ANALYSE_BY_AREAS=}'.split("=")[0] + END_NAME)
-    #     plot_convergence_Dkl(ib_data)
-        breakpoint()
-        plot_hierarchy(ib_data, pre_pros(ib_data))
+    main_analyze(30000, ANALYSE_BY_PEOPLE)
+    # for i, cluster_name in enumerate(CLUSTERS):
+    #     ib_data = load_analysed_data("data\\" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+        # plot_convergence_Dkl(ib_data)
+        # breakpoint()
+        # plot_hierarchy(ib_data, pre_pros(ib_data))
 main()
