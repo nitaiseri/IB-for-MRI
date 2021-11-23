@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.io import loadmat
@@ -5,18 +7,18 @@ from scipy.cluster import hierarchy
 import matplotlib
 import pickle
 
-# CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-CLUSTERS = ["MTV"]
+CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+# CLUSTERS = ["R2s"]
 CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
-NUM_OF_BETA = 400
-END_NAME = "beta_nan"
+NUM_OF_BETA = 700
+END_NAME = "with_p(x^|x)"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
 ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
 
 
-def generate_beta(max_value = 20000, length = NUM_OF_BETA, bad_betas = None):
+def generate_beta(max_value=20000, length=NUM_OF_BETA, bad_betas=None):
     """
     function to generate list of decreasing beta's
     :param max_value: first beta value
@@ -27,14 +29,14 @@ def generate_beta(max_value = 20000, length = NUM_OF_BETA, bad_betas = None):
     if not bad_betas:
         for idx in range(length-1):
             beta_values.append(beta_values[-1]*0.99)
-    # else:
-    #     bad_betas = bad_betas - 1
-    #     for idx in range(length-1):
-    #         if idx in bad_betas:
-    #             beta_values.append(beta_values[-1]*0.999)
-    #         else:
-    #             beta_values.append(beta_values[-1] * 0.99)
     return beta_values
+
+
+# def re_generate_beta(beta_values, beta):
+#     new_beta_values = [beta_values[0]]
+#     for idx in range(NUM_OF_BETA - 1):
+#         new_beta_values.append(new_beta_values[-1] * 0.995)
+#     return new_beta_values[:NUM_OF_BETA]
 
 
 def D_kl(p1, p2):
@@ -143,7 +145,6 @@ class IB:
         """
         p_x_hat = p_x_hat_given_x @ p_x
         p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
-        # p_x_given_x_hat[np.isnan(p_x_given_x_hat)] = 0
         p_y_x_hat = p_y_x @ p_x_given_x_hat
         not_norm = np.exp(-beta * D_kl(p_y_x, p_y_x_hat)) * p_x_hat
         not_norm = not_norm.T
@@ -175,16 +176,16 @@ class IB:
         p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
 
         for beta in self.beta_values:
-            # if beta == 2963.8658739920816:
-            #     breakpoint()
             err = 1
             index = 0
+            if np.any(np.where(p_x_hat_given_x < np.exp(-200))):
+                p_x_hat_given_x += np.exp(-100)
+                p_x_hat_given_x = p_x_hat_given_x / np.sum(p_x_hat_given_x, axis=0)
             while err > (1 / beta) / 10:
                 prev_p = p_x_hat_given_x
-
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
-                if p_x_hat_given_x[29][0] == 0:
-                    breakpoint()
+                # if p_x_hat_given_x[29][0] == 0:
+                #     breakpoint()
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
                 index += 1
 
@@ -202,19 +203,13 @@ class IB:
         self.clusters_matrix = np.array(self.clusters_matrix)
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
-        bad_betas = self.find_more_then_one()
-        if len(bad_betas)>1:
-            counter = 0
-            for inx in bad_betas:
-                inx += counter
-                for i in range(1, 11):
-                    self.beta_values.insert(inx + i, self.beta_values[inx] - i*(self.beta_values[inx]-self.beta_values[inx+i])/10)
-                    counter += 1
-            self.beta_values = self.beta_values[:NUM_OF_BETA]
-            self.clusters_matrix = []
-            self.full_distances = []
-            self.clus = []
-            self.get_clusters()
+        # bad_betas = self.find_more_then_one()
+        # if len(bad_betas)>1:
+        #     self.beta_values = re_generate_beta(self.beta_values, bad_betas)
+        #     self.clusters_matrix = []
+        #     self.full_distances = []
+        #     self.clus = []
+        #     self.get_clusters()
 
     def run_analysis(self, which_ax=ANALYSE_BY_AREAS, name_of_file=None):
         """
@@ -235,7 +230,7 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data/" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME, 'wb') as ib_data_after_analysis:
+        with open("data/" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME + "-re_b", 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
@@ -246,7 +241,7 @@ class IB:
             p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
             err = 1
             index = 0
-            while err > (1 / beta) :
+            while err > (1 / beta):
                 prev_p = p_x_hat_given_x
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
@@ -265,15 +260,10 @@ class IB:
 
     def find_more_then_one(self):
         bad_betas = []
-        for idx in range(len(self.beta_values)):
-            cur_cluster = list(self.clusters_matrix[idx])
-            for x in set(cur_cluster):
-                if list(cur_cluster).count(x) > 1 and x != -1:
-                    idxs = [i for i, y in enumerate(cur_cluster) if y == x]
-                    if len(idxs) > 2:
-                        bad_betas.append(idx)
-                    self.clusters_matrix[:, idxs[0]] = -1
-        return set(bad_betas)
+        for idx in range(len(self.beta_values)-1):
+            if self.clus[idx]-self.clus[idx+1] > 1:
+                bad_betas.append(idx)
+        return bad_betas
 
 ## Plot results:
 def subj_to_text(subj):
@@ -296,10 +286,12 @@ def plot_convergence_Dkl(ib_d):
     plt.figure(figsize=(30,30))
     plt.rcParams["figure.figsize"]=30,30
     fd = np.array(ib_d.full_distances)
-
-    plot_axis = [(max(ib_d.beta_values)*(0.99)**np.where(~ib_d.clusters_matrix.any(axis=1))[0][0]) - 50,
-                                                                max(ib_d.beta_values), 0, fd.max() + 0.0002]
-
+    try:
+        plot_axis = [(max(ib_d.beta_values)*(0.99)**(np.where(~ib_d.clusters_matrix.any(axis=1))[0][0])) - 50,
+                                                                    max(ib_d.beta_values), 0, fd.max() + 0.0002]
+    except(IndexError):
+        print(str(ib_d.name_of_scan) + "-" + END_NAME + " didn't converged to one cluster", file=sys.stderr)
+        return None
     for idx in range(fd.shape[1]):
         plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
 
@@ -321,7 +313,8 @@ def plot_convergence_Dkl(ib_d):
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig("plots/" + str(ib_d.name_of_scan) + "convergence-" + END_NAME +".png")
+    plt.savefig("plots/" + str(ib_d.name_of_scan) + "convergence-" + ANALYSE_TYPE + "-" + END_NAME +".png")
+    return 1
 
 
 def load_analysed_data(name_of_file) -> IB:
@@ -337,14 +330,15 @@ def load_analysed_data(name_of_file) -> IB:
 def main_analyze(beta_max, analys_by):
     input_matrixes, subjects, regions, area_names, area_types = \
         load_data('raw_data/huji_data.mat')
-    beta_values = generate_beta(beta_max, NUM_OF_BETA)
-    # beta_values = None
+    # beta_values = generate_beta(beta_max, NUM_OF_BETA)
+    beta_values = None
     for cluster_name in CLUSTERS:
         ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions, area_names, area_types, beta_values, cluster_name)
         ib_data.run_analysis(analys_by)
 
 
 def pre_pros(ib_data):
+    print(ib_data.name_of_scan)
     def find_multi(tt, x):
         return [i for i, y in enumerate(tt) if y == x]
 
@@ -407,11 +401,12 @@ def plot_hierarchy(ib_data, Z):
 
 
 def main():
-    main_analyze(3500, ANALYSE_BY_PEOPLE)
-    # for i, cluster_name in enumerate(CLUSTERS):
-    #     ib_data = load_analysed_data("data/" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+    # main_analyze(3500, ANALYSE_BY_PEOPLE)
+    for i, cluster_name in enumerate(CLUSTERS):
+        ib_data = load_analysed_data("data/" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
     #     breakpoint()
-    #     plot_hierarchy(ib_data, pre_pros(ib_data))
-        # plot_convergence_Dkl(ib_data)
+        # if not plot_convergence_Dkl(ib_data):
+        #     continue
+        # plot_hierarchy(ib_data, pre_pros(ib_data))
 
 main()
