@@ -7,18 +7,20 @@ from scipy.cluster import hierarchy
 import matplotlib
 import pickle
 
-CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-# CLUSTERS = ["R2s"]
+# CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+CLUSTERS = ["MTsat"]
 CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
 NUM_OF_BETA = 700
-END_NAME = "with_p(x^|x)"
+END_NAME = "square"
+SOURCE_DIR = "/" + END_NAME
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
 ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
+NORMALIZATION = {"square": lambda x: np.square(x), "exp": lambda x: np.exp(x)}
 
 
-def generate_beta(max_value=20000, length=NUM_OF_BETA, bad_betas=None):
+def generate_beta(max_value=20000, length=NUM_OF_BETA):
     """
     function to generate list of decreasing beta's
     :param max_value: first beta value
@@ -26,17 +28,9 @@ def generate_beta(max_value=20000, length=NUM_OF_BETA, bad_betas=None):
     :return: list of the beta's
     """
     beta_values = [max_value]
-    if not bad_betas:
-        for idx in range(length-1):
-            beta_values.append(beta_values[-1]*0.99)
+    for idx in range(length-1):
+        beta_values.append(beta_values[-1]*0.99)
     return beta_values
-
-
-# def re_generate_beta(beta_values, beta):
-#     new_beta_values = [beta_values[0]]
-#     for idx in range(NUM_OF_BETA - 1):
-#         new_beta_values.append(new_beta_values[-1] * 0.995)
-#     return new_beta_values[:NUM_OF_BETA]
 
 
 def D_kl(p1, p2):
@@ -114,18 +108,30 @@ def load_data(path):
     return mean_values, subjects, region, area_names, area_types
 
 
+def normalize_data(input_matrix, normalization=None):
+    """
+    function that normalize the input data.
+    :param input_matrix: the data to normalize.
+    :param normalization: type of normalization.
+    :return: normalize data.
+    """
+    if normalization:
+        return NORMALIZATION[normalization](input_matrix)
+    return input_matrix
+
+
 class IB:
     """
     class for MRI's data for the iterative IB algorithm.
     """
-    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan):
+    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan, normalization = None):
         self.beta_max = None
         self.name_of_scan = name_of_scan
         self.beta_values = beta_values
         self.analyse_by_areas = ANALYSE_BY_AREAS
         self.region = regions
         self.subjects = subjects
-        self.input_matrix = input_matrix
+        self.input_matrix = normalize_data(input_matrix, normalization)
         self.p_y_x_hat = None
         self.p_x_given_x_hat = None
         self.clusters_matrix = []
@@ -144,7 +150,7 @@ class IB:
         :return: the new P(x^|x)
         """
         p_x_hat = p_x_hat_given_x @ p_x
-        p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+        p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
         p_y_x_hat = p_y_x @ p_x_given_x_hat
         not_norm = np.exp(-beta * D_kl(p_y_x, p_y_x_hat)) * p_x_hat
         not_norm = not_norm.T
@@ -156,7 +162,6 @@ class IB:
         :param input_matrix: P(y|x) not normalized
         :return: P(y|x) normalized, P(x^|x) ,P(x)
         """
-        # input_matrix = abs(np.random.normal(2,1,(5,8)))
         p_y_x = input_matrix / np.sum(input_matrix, axis=0)
 
         x_dim = p_y_x.shape[1]
@@ -184,13 +189,11 @@ class IB:
             while err > (1 / beta) / 10:
                 prev_p = p_x_hat_given_x
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
-                # if p_x_hat_given_x[29][0] == 0:
-                #     breakpoint()
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
-            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
             if np.any(np.isnan(p_x_given_x_hat)):
                 breakpoint()
 
@@ -230,13 +233,13 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data/" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME + "-re_b", 'wb') as ib_data_after_analysis:
+        with open("data/" + SOURCE_DIR + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME + "-re_b", 'wb') as\
+                ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
     def find_beta_max(self):
-        beta = 5000
-        found_beta = False
+        beta = 2000
         while True:
             p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
             err = 1
@@ -248,14 +251,11 @@ class IB:
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
-            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
 
-            p_y_x_hat = p_y_x @ p_x_given_x_hat
             rank = np.linalg.matrix_rank(p_x_given_x_hat, tol=(1 / beta) / 10)
             if rank == self.input_matrix.shape[1]:
-                # if found_beta:
-                    return beta
-                # found_beta = True
+                return beta
             beta += 500
 
     def find_more_then_one(self):
@@ -265,7 +265,8 @@ class IB:
                 bad_betas.append(idx)
         return bad_betas
 
-## Plot results:
+
+# Plot results:
 def subj_to_text(subj):
     """
     make the subject into a string
@@ -313,7 +314,7 @@ def plot_convergence_Dkl(ib_d):
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig("plots/" + str(ib_d.name_of_scan) + "convergence-" + ANALYSE_TYPE + "-" + END_NAME +".png")
+    plt.savefig("plots/" + SOURCE_DIR + "/Dkl_convergence" + str(ib_d.name_of_scan) + "convergence-" + ANALYSE_TYPE + "-" + END_NAME +".png")
     return 1
 
 
@@ -327,18 +328,19 @@ def load_analysed_data(name_of_file) -> IB:
     return ib_data
 
 
-def main_analyze(beta_max, analys_by):
+def main_analyze(analys_by, beta_max = None):
     input_matrixes, subjects, regions, area_names, area_types = \
         load_data('raw_data/huji_data.mat')
-    # beta_values = generate_beta(beta_max, NUM_OF_BETA)
-    beta_values = None
+    beta_values = generate_beta(beta_max, NUM_OF_BETA) if beta_max else None
     for cluster_name in CLUSTERS:
-        ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions, area_names, area_types, beta_values, cluster_name)
+        ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions,
+                     area_names, area_types, beta_values, cluster_name)
         ib_data.run_analysis(analys_by)
 
 
-def pre_pros(ib_data):
+def pre_pros_for_hierarchy(ib_data):
     print(ib_data.name_of_scan)
+
     def find_multi(tt, x):
         return [i for i, y in enumerate(tt) if y == x]
 
@@ -396,17 +398,17 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig("plots/" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
+    plt.savefig("plots/" + SOURCE_DIR + "/hierarchy" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
     # plt.show()
 
 
 def main():
-    # main_analyze(3500, ANALYSE_BY_PEOPLE)
+    main_analyze(ANALYSE_BY_AREAS)
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data("data/" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
-    #     breakpoint()
-        # if not plot_convergence_Dkl(ib_data):
-        #     continue
-        # plot_hierarchy(ib_data, pre_pros(ib_data))
+        ib_data = load_analysed_data("data/" + SOURCE_DIR + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+        plot_convergence_Dkl(ib_data)
+        plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
 
-main()
+
+if __name__ == '__main__':
+    main()
