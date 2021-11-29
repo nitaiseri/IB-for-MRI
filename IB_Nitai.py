@@ -1,3 +1,4 @@
+import os
 import sys
 
 import numpy as np
@@ -7,17 +8,19 @@ from scipy.cluster import hierarchy
 import matplotlib
 import pickle
 
-# CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-CLUSTERS = ["MTsat"]
+CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+# CLUSTERS = ["MTV", "R2s"]
 CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
 NUM_OF_BETA = 700
-END_NAME = "square"
-SOURCE_DIR = "/" + END_NAME
+END_NAME = "one_over"
+SOURCE_DIR = END_NAME + "/"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
 ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
-NORMALIZATION = {"square": lambda x: np.square(x), "exp": lambda x: np.exp(x)}
+NORMALIZATION = {"square": lambda x: np.square(x),
+                 "exp": lambda x: np.exp(-1/x),
+                 "one_over": lambda x: np.square(1/x)}
 
 
 def generate_beta(max_value=20000, length=NUM_OF_BETA):
@@ -52,14 +55,8 @@ def D_kl_vec(p_y_x_hat):
     :param p_y_x_hat:
     :return:
     """
-    Dkl_vals = []
-    for idx in range(p_y_x_hat.shape[1]):
-        p_mean = np.mean(p_y_x_hat, axis=1)
-        p_cur = p_y_x_hat[:, idx]
-        dkl = sum([p_cur[x] * np.log(p_cur[x] / p_mean[x]) if (p_cur[x] > 0) else 0 for x in range(p_y_x_hat.shape[0])])
-        # dkl = -sum([p_mean[x]*np.log(p_cur[x]/p_mean[x]) if (p_mean[x] > 0 and p_cur[x] > 0) else 0 for x in range(33)])
-        Dkl_vals.append(dkl)
-    return Dkl_vals
+    p_mean = np.mean(p_y_x_hat, axis=1)
+    return np.apply_along_axis(lambda x: np.sum(np.where(x > 0, x * np.log(x / p_mean), 0)), 1, p_y_x_hat.T)
 
 
 def load_data(path):
@@ -124,7 +121,7 @@ class IB:
     """
     class for MRI's data for the iterative IB algorithm.
     """
-    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan, normalization = None):
+    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan, normalization=None):
         self.beta_max = None
         self.name_of_scan = name_of_scan
         self.beta_values = beta_values
@@ -233,8 +230,9 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data/" + SOURCE_DIR + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME + "-re_b", 'wb') as\
-                ib_data_after_analysis:
+        filename = "data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + name_of_file + "-" + ANALYSE_TYPE
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        with open(filename, 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
@@ -295,6 +293,10 @@ def plot_convergence_Dkl(ib_d):
         return None
     for idx in range(fd.shape[1]):
         plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
+    # if idx > fd.shape[1] / 2:
+    #     plt.plot(ib_d.beta_values, -fd[:, idx], linewidth=2)
+    # else:
+    #     plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
 
     #plot legend
     for idx in range(ib_d.p_y_x_hat.shape[1]):
@@ -307,14 +309,16 @@ def plot_convergence_Dkl(ib_d):
                 else:
                     plt.text(plot_axis[1]*1.05, fd[0,idx],subj_to_text(ib_d.subjects[idx]),fontsize=20,rotation=45,rotation_mode = "anchor")
 
-    plt.title(ib_d.name_of_scan, fontsize=20)
+    plt.title(ib_d.name_of_scan + "-" + END_NAME, fontsize=20)
     plt.xscale("log")
     plt.xlabel('beta', fontsize=20)
     plt.ylabel('Dkl to mean', fontsize=20)
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig("plots/" + SOURCE_DIR + "/Dkl_convergence" + str(ib_d.name_of_scan) + "convergence-" + ANALYSE_TYPE + "-" + END_NAME +".png")
+    filename = "plots/" + SOURCE_DIR + ANALYSE_TYPE + "/" + "Dkl_convergence/" + str(ib_d.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    plt.savefig(filename)
     return 1
 
 
@@ -326,16 +330,6 @@ def load_analysed_data(name_of_file) -> IB:
     with open(name_of_file, 'rb') as ib_data:
         ib_data = pickle.load(ib_data)
     return ib_data
-
-
-def main_analyze(analys_by, beta_max = None):
-    input_matrixes, subjects, regions, area_names, area_types = \
-        load_data('raw_data/huji_data.mat')
-    beta_values = generate_beta(beta_max, NUM_OF_BETA) if beta_max else None
-    for cluster_name in CLUSTERS:
-        ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions,
-                     area_names, area_types, beta_values, cluster_name)
-        ib_data.run_analysis(analys_by)
 
 
 def pre_pros_for_hierarchy(ib_data):
@@ -374,8 +368,8 @@ def pre_pros_for_hierarchy(ib_data):
     Z = np.array(Z, dtype='double')
     Z[:, 2] = Z[:, 2] - min(Z[:, 2])
 
-    for i in range(Z.shape[0]):
-        Z[i, 2] = i * 5
+    # for i in range(Z.shape[0]):
+    #     Z[i, 2] = i * 5
 
     return Z
 
@@ -384,7 +378,7 @@ def plot_hierarchy(ib_data, Z):
     matplotlib.rcParams['lines.linewidth'] = 5
 
     fig, ax = plt.subplots(1, 1)
-    ax.set_title(ib_data.name_of_scan, fontsize=30)
+    ax.set_title(ib_data.name_of_scan + "-" + END_NAME, fontsize=30)
     fig.set_size_inches(16, 8)
     # dn = hierarchy.dendrogram(Z,labels=area_names,leaf_rotation=-80, ax=ax)
     if ib_data.analyse_by_areas:
@@ -398,14 +392,26 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig("plots/" + SOURCE_DIR + "/hierarchy" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
+    filename = "plots/" + SOURCE_DIR + ANALYSE_TYPE + "/" + "hierarchy/" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    plt.savefig(filename)
     # plt.show()
 
 
+def main_analyze(analys_by, normal=None, beta_max=None):
+    input_matrixes, subjects, regions, area_names, area_types = \
+        load_data('raw_data/huji_data.mat')
+    beta_values = generate_beta(beta_max, NUM_OF_BETA) if beta_max else None
+    for cluster_name in CLUSTERS:
+        ib_data = IB(input_matrixes[CLUSTERS_DIC[cluster_name]], subjects[CLUSTERS_DIC[cluster_name]], regions,
+                     area_names, area_types, beta_values, cluster_name, normal)
+        ib_data.run_analysis(analys_by)
+
+
 def main():
-    main_analyze(ANALYSE_BY_AREAS)
+    main_analyze(ANALYSE_BY_PEOPLE, "one_over")
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data("data/" + SOURCE_DIR + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+        ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
         plot_convergence_Dkl(ib_data)
         plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
 
