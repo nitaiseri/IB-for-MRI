@@ -6,16 +6,19 @@ import matplotlib
 import pickle
 
 # CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
-CLUSTERS = ["R1", "MD", "R2", "R2s"]
-NUM_OF_BETA = 400
-END_NAME = "beta_max"
+CLUSTERS = ["MTsat"]
+CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
+NUM_OF_BETA = 700
+END_NAME = "square"
+SOURCE_DIR = "/" + END_NAME
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
 ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
+NORMALIZATION = {"square": lambda x: np.square(x), "exp": lambda x: np.exp(x)}
 
 
-def generate_beta(max_value = 20000, length = NUM_OF_BETA, bad_betas = None):
+def generate_beta(max_value=20000, length=NUM_OF_BETA):
     """
     function to generate list of decreasing beta's
     :param max_value: first beta value
@@ -23,16 +26,8 @@ def generate_beta(max_value = 20000, length = NUM_OF_BETA, bad_betas = None):
     :return: list of the beta's
     """
     beta_values = [max_value]
-    if not bad_betas:
-        for idx in range(length-1):
-            beta_values.append(beta_values[-1]*0.99)
-    # else:
-    #     bad_betas = bad_betas - 1
-    #     for idx in range(length-1):
-    #         if idx in bad_betas:
-    #             beta_values.append(beta_values[-1]*0.999)
-    #         else:
-    #             beta_values.append(beta_values[-1] * 0.99)
+    for idx in range(length-1):
+        beta_values.append(beta_values[-1]*0.99)
     return beta_values
 
 
@@ -111,18 +106,30 @@ def load_data(path):
     return mean_values, subjects, region, area_names, area_types
 
 
+def normalize_data(input_matrix, normalization=None):
+    """
+    function that normalize the input data.
+    :param input_matrix: the data to normalize.
+    :param normalization: type of normalization.
+    :return: normalize data.
+    """
+    if normalization:
+        return NORMALIZATION[normalization](input_matrix)
+    return input_matrix
+
+
 class IB:
     """
     class for MRI's data for the iterative IB algorithm.
     """
-    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan):
+    def __init__(self, input_matrix, subjects, regions, area_names, area_types, beta_values, name_of_scan, normalization = None):
         self.beta_max = None
         self.name_of_scan = name_of_scan
         self.beta_values = beta_values
         self.analyse_by_areas = ANALYSE_BY_AREAS
         self.region = regions
         self.subjects = subjects
-        self.input_matrix = input_matrix
+        self.input_matrix = normalize_data(input_matrix, normalization)
         self.p_y_x_hat = None
         self.p_x_given_x_hat = None
         self.clusters_matrix = []
@@ -141,8 +148,7 @@ class IB:
         :return: the new P(x^|x)
         """
         p_x_hat = p_x_hat_given_x @ p_x
-        p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
-        # p_x_given_x_hat[np.isnan(p_x_given_x_hat)] = 0
+        p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
         p_y_x_hat = p_y_x @ p_x_given_x_hat
         not_norm = np.exp(-beta * D_kl(p_y_x, p_y_x_hat)) * p_x_hat
         not_norm = not_norm.T
@@ -154,7 +160,6 @@ class IB:
         :param input_matrix: P(y|x) not normalized
         :return: P(y|x) normalized, P(x^|x) ,P(x)
         """
-        # input_matrix = abs(np.random.normal(2,1,(5,8)))
         p_y_x = input_matrix / np.sum(input_matrix, axis=0)
 
         x_dim = p_y_x.shape[1]
@@ -174,10 +179,11 @@ class IB:
         p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
 
         for beta in self.beta_values:
-            # if beta == 2963.8658739920816:
-            #     breakpoint()
             err = 1
             index = 0
+            if np.any(np.where(p_x_hat_given_x < np.exp(-200))):
+                p_x_hat_given_x += np.exp(-100)
+                p_x_hat_given_x = p_x_hat_given_x / np.sum(p_x_hat_given_x, axis=0)
             while err > (1 / beta) / 10:
                 prev_p = p_x_hat_given_x
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
@@ -185,11 +191,13 @@ class IB:
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
-            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
+            if np.any(np.isnan(p_x_given_x_hat)):
+                breakpoint()
 
             p_y_x_hat = p_y_x @ p_x_given_x_hat
             self.full_distances.append(D_kl_vec(p_y_x_hat))
-            self.clus.append(np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10))
+            self.clus.append(np.linalg.matrix_rank(p_x_given_x_hat, tol=(1 / beta) / 10))
             t, indices = np.unique(p_x_given_x_hat.round(decimals=int(np.ceil(np.log10(10 * beta)))), axis=1,
                                    return_inverse=True)
             self.clusters_matrix.append(indices)
@@ -197,14 +205,14 @@ class IB:
         self.p_y_x_hat = p_y_x_hat
         self.p_x_given_x_hat = p_x_given_x_hat
         # bad_betas = self.find_more_then_one()
-        # if bad_betas:
-        #     self.beta_values = generate_beta(self.beta_values[0], NUM_OF_BETA, bad_betas)
+        # if len(bad_betas)>1:
+        #     self.beta_values = re_generate_beta(self.beta_values, bad_betas)
         #     self.clusters_matrix = []
         #     self.full_distances = []
         #     self.clus = []
         #     self.get_clusters()
 
-    def run_analysis(self, which_ax = ANALYSE_BY_AREAS, name_of_file = None):
+    def run_analysis(self, which_ax=ANALYSE_BY_AREAS, name_of_file=None):
         """
         decide over which axes run the algorithm and run get_clusters, and save the object after analyse the data.
         :param name_of_file: name of the object file to save.
@@ -214,56 +222,49 @@ class IB:
         self.analyse_by_areas = which_ax
         if self.analyse_by_areas:
             self.input_matrix = self.input_matrix.T
-        if not self.beta_max:
+        if not self.beta_values:
             self.beta_values = generate_beta(self.find_beta_max(), NUM_OF_BETA)
             self.beta_max = self.beta_values[0]
-        else:
-            self.beta_values = generate_beta(self.beta_max, NUM_OF_BETA)
+        # else:
+        #     self.beta_values = generate_beta(self.beta_max, NUM_OF_BETA)
         self.analyse_by_areas = which_ax
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        with open("data\\" + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME, 'wb') as ib_data_after_analysis:
+        with open("data/" + SOURCE_DIR + name_of_file + "-" + ANALYSE_TYPE + "-" + END_NAME + "-re_b", 'wb') as\
+                ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
         print(str(self.name_of_scan) + "-Done")
 
     def find_beta_max(self):
-        beta = 5000
-        found_beta = False
+        beta = 2000
         while True:
             p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
             err = 1
             index = 0
-            while err > (1 / beta) :
+            while err > (1 / beta):
                 prev_p = p_x_hat_given_x
                 p_x_hat_given_x = self.IB_iter(p_x, p_y_x, p_x_hat_given_x, beta)
                 err = np.sum(abs(prev_p - p_x_hat_given_x))
                 index += 1
 
             p_x_hat = p_x_hat_given_x @ p_x
-            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / (p_x_hat)
+            p_x_given_x_hat = (p_x_hat_given_x * p_x).T / p_x_hat
 
-            p_y_x_hat = p_y_x @ p_x_given_x_hat
-            rank = np.linalg.matrix_rank(p_y_x_hat, tol=(1 / beta) / 10)
+            rank = np.linalg.matrix_rank(p_x_given_x_hat, tol=(1 / beta) / 10)
             if rank == self.input_matrix.shape[1]:
-                if found_beta:
-                    return beta
-                found_beta = True
+                return beta
             beta += 500
 
     def find_more_then_one(self):
         bad_betas = []
-        for idx in range(len(self.beta_values)):
-            cur_cluster = list(self.clusters_matrix[idx])
-            for x in set(cur_cluster):
-                if list(cur_cluster).count(x) > 1 and x != -1:
-                    idxs = [i for i, y in enumerate(cur_cluster) if y == x]
-                    if len(idxs) > 2:
-                        bad_betas.append(idx)
-                    self.clusters_matrix[:, idxs[0]] = -1
+        for idx in range(len(self.beta_values)-1):
+            if self.clus[idx]-self.clus[idx+1] > 1:
+                bad_betas.append(idx)
         return bad_betas
 
-## Plot results:
+
+# Plot results:
 def subj_to_text(subj):
     """
     make the subject into a string
@@ -284,10 +285,12 @@ def plot_convergence_Dkl(ib_d):
     plt.figure(figsize=(30,30))
     plt.rcParams["figure.figsize"]=30,30
     fd = np.array(ib_d.full_distances)
-
-    plot_axis = [(max(ib_d.beta_values)*(0.99)**np.where(~ib_d.clusters_matrix.any(axis=1))[0][0]) - 50,
-                                                                max(ib_d.beta_values), 0, fd.max() + 0.0002]
-
+    try:
+        plot_axis = [(max(ib_d.beta_values)*(0.99)**(np.where(~ib_d.clusters_matrix.any(axis=1))[0][0])) - 50,
+                                                                    max(ib_d.beta_values), 0, fd.max() + 0.0002]
+    except(IndexError):
+        print(str(ib_d.name_of_scan) + "-" + END_NAME + " didn't converged to one cluster", file=sys.stderr)
+        return None
     for idx in range(fd.shape[1]):
         plt.plot(ib_d.beta_values, fd[:, idx], linewidth=2)
 
@@ -309,7 +312,8 @@ def plot_convergence_Dkl(ib_d):
     plt.xticks(fontsize=16)
     plt.yticks(fontsize=16)
     plt.axis(plot_axis)
-    plt.savefig(str(ib_d.name_of_scan) + "convergence-" + END_NAME +".png")
+    plt.savefig("plots/" + SOURCE_DIR + "/Dkl_convergence" + str(ib_d.name_of_scan) + "convergence-" + ANALYSE_TYPE + "-" + END_NAME +".png")
+    return 1
 
 
 def load_analysed_data(name_of_file) -> IB:
@@ -322,16 +326,18 @@ def load_analysed_data(name_of_file) -> IB:
     return ib_data
 
 
-def main_analyze(beta_max, analys_by):
+def main_analyze(analys_by, beta_max = None):
     input_matrixes, subjects, regions, area_names, area_types = \
-        load_data('raw_data\\huji_data.mat')
+        load_data('huji_data.mat')
     beta_values = generate_beta(beta_max, NUM_OF_BETA)
     for i, cluster_name in enumerate(CLUSTERS):
         ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
         ib_data.run_analysis(analys_by)
 
 
-def pre_pros(ib_data):
+def pre_pros_for_hierarchy(ib_data):
+    print(ib_data.name_of_scan)
+
     def find_multi(tt, x):
         return [i for i, y in enumerate(tt) if y == x]
 
@@ -389,15 +395,17 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    plt.savefig(str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
+    plt.savefig("plots/" + SOURCE_DIR + "/hierarchy" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png")
     # plt.show()
 
 
 def main():
-    main_analyze(30000, ANALYSE_BY_PEOPLE)
+    main_analyze(ANALYSE_BY_AREAS)
     for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data("data\\" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
-        # plot_convergence_Dkl(ib_data)
-        # breakpoint()
-        plot_hierarchy(ib_data, pre_pros(ib_data))
-main()
+        ib_data = load_analysed_data("data/" + SOURCE_DIR + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+        plot_convergence_Dkl(ib_data)
+        plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
+
+
+if __name__ == '__main__':
+    main()
