@@ -76,13 +76,13 @@ def load_data(path):
     subjects = {}
     region = {}
 
-    with open('gender.txt') as f:
+    with open('raw_data\\gender.txt') as f:
         gender = f.read().splitlines()
-    with open('age.txt') as f:
+    with open('raw_data\\age.txt') as f:
         age = f.read().splitlines()
-    with open('area_names2.txt') as f:
+    with open('raw_data\\area_names2.txt') as f:
         area_names = f.read().splitlines()
-    with open('area_types.txt') as f:
+    with open('raw_data\\area_types.txt') as f:
         area_types = f.read().splitlines()
 
     subj_id = [str(x + 1) for x in range(45)]
@@ -324,7 +324,7 @@ def load_analysed_data(name_of_file) -> IB:
 
 def main_analyze(beta_max, analys_by):
     input_matrixes, subjects, regions, area_names, area_types = \
-        load_data('huji_data.mat')
+        load_data('raw_data\\huji_data.mat')
     beta_values = generate_beta(beta_max, NUM_OF_BETA)
     for i, cluster_name in enumerate(CLUSTERS):
         ib_data = IB(input_matrixes[i], subjects[i], regions, area_names, area_types, beta_values, cluster_name)
@@ -395,9 +395,9 @@ def plot_hierarchy(ib_data, Z):
 
 def main():
     main_analyze(30000, ANALYSE_BY_PEOPLE)
-    # for i, cluster_name in enumerate(CLUSTERS):
-    #     ib_data = load_analysed_data("data\\" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
+    for i, cluster_name in enumerate(CLUSTERS):
+        ib_data = load_analysed_data("data\\" + cluster_name + "-" + ANALYSE_TYPE + "-" + END_NAME)
         # plot_convergence_Dkl(ib_data)
         # breakpoint()
-        # plot_hierarchy(ib_data, pre_pros(ib_data))
+        plot_hierarchy(ib_data, pre_pros(ib_data))
 main()
