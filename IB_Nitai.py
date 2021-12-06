@@ -7,6 +7,7 @@ from scipy.io import loadmat
 from scipy.cluster import hierarchy
 import matplotlib
 import pickle
+import data
 
 CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
 # CLUSTERS = ["MTV", "R2s"]
@@ -17,7 +18,7 @@ SOURCE_DIR = END_NAME + "/"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
 ANALYSE_BY_PEOPLE = False
-ANALYSE_TYPE = "ANALYSE_BY_PEOPLE"
+ANALYSE_TYPE = "ANALYSE_BY_AREAS"
 NORMALIZATION = {"square": lambda x: np.square(x),
                  "exp": lambda x: np.exp(-1/x),
                  "one_over": lambda x: np.square(1/x)}
@@ -409,12 +410,15 @@ def main_analyze(analys_by, normal=None, beta_max=None):
 
 
 def main():
-    main_analyze(ANALYSE_BY_PEOPLE, "one_over")
-    for i, cluster_name in enumerate(CLUSTERS):
-        ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
-        plot_convergence_Dkl(ib_data)
-        plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
+    # main_analyze(ANALYSE_BY_AREAS)
+    # for i, cluster_name in enumerate(CLUSTERS):
+    #     ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
+    #     mat = data.Data(ib_data.input_matrix)
+    #     plot_convergence_Dkl(ib_data)
+        # plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
 
+    mat = data.Data(np.array([[1,2,3],[3,3,4]]))
+    mat.generate_new_prob()
 
 if __name__ == '__main__':
     main()
