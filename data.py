@@ -20,21 +20,11 @@ class Data:
         probability_matrix = []
         for raw in counts:
             probability_matrix.append(raw/np.sum(raw, axis=0))
-
-        sns.hisplot
         return probability_matrix, bins
         # prob_mat = counts/np.expand_dims(np.sum(counts, axis=1).T, axis=0).T
         # counts = counts.T / np.sum(counts.T, axis=0)
         # a = 1
 
 
-
-
-# xs = randrange(n, 23, 32)
-# ys = randrange(n, 0, 100)
-# zs = randrange(n, 0, 100)
-measure, seg = load_data.main()
-a = np.unique(seg)
-b = 1
 
 

@@ -3,6 +3,7 @@ import numpy as np
 import scipy
 import nibabel as nib
 from typing import Union
+import json
 
 from scipy import stats
 from numpy import genfromtxt
@@ -15,14 +16,34 @@ import seaborn as sns
 
 class HumanScans:
 
-    def __init__(self, Mtsat, R1, R2, R2s, Mtv, Md, seg):
+    def __init__(self, Mtsat, R1, R2, R2s, Mtv, Md, high_seg, MD_seg, R2_seg, name, age, gender):
         self.Mtsat = Mtsat
         self.R1 = R1
         self.R2 = R2
         self.R2s = R2s
         self.Mtv = Mtv
         self.Md = Md
-        self.seg = seg
+        self.high_seg = high_seg
+        self.MD_seg = MD_seg
+        self.R2_seg = R2_seg
+        self.name = name
+        self.gender = gender
+        self.age = age
+
+    def get_indexes_of_area(self, area_num):
+        return np.argwhere(self.high_seg == area_num)
+
+    def get_num_of_voxels_in_area(self, area_num):
+        ind = self.get_indexes_of_area(area_num)
+
+    def get_mean_per_param(self, param):
+        pass
+
+    def get_histogram_per_area(self, param):
+        pass
+
+    def get_histogram_total(self):
+        pass
 
 
 def HUJI_subjects_preprocess(analysisDir):
@@ -95,7 +116,15 @@ def get_subject_paths(analysisDir, niba_file_name, subject_names):
     return subject_paths, subject_names
 
 
-def load_human_data(sub_path) -> Union[HumanScans, None]:
+def load_table(path, r=False):
+    table = nib.load(path).get_fdata()
+    if r:
+        table = 1 / table  # todo: problem with zero division, change later
+        table = np.nan_to_num(table, posinf=0.0, neginf=0.0)
+    return table
+
+
+def load_human_data(sub_path, additional_data) -> Union[HumanScans, None]:
     """
     # Creates HumanScan Object that have np arrays of the parameters data, t1 ,r2s ,mt, tv and seg file
     # input: sub_path: string representing the folder path of a subject to their MRI scan data
@@ -105,43 +134,55 @@ def load_human_data(sub_path) -> Union[HumanScans, None]:
 
     # look for maps paths
     T1file = os.path.join(sub_path, 'mrQ_fixbias', 'OutPutFiles_1', 'BrainMaps', 'T1_map_Wlin.nii.gz')
-    TVfile = os.path.join(sub_path, 'mrQ_fixbias', 'OutPutFiles_1', 'BrainMaps', 'TV_map.nii.gz')
+    MTVfile = os.path.join(sub_path, 'mrQ_fixbias', 'OutPutFiles_1', 'BrainMaps', 'TV_map.nii.gz')
     R2sfile = os.path.join(sub_path, 'multiecho_flash_R2s', 'R2_mean_2TVfixB1.nii.gz')
-    MTfile = os.path.join(sub_path, 'MT', 'MT_sat_mrQ_fixbias.nii.gz')
+    MTsatfile = os.path.join(sub_path, 'MT', 'MT_sat_mrQ_fixbias.nii.gz')
     MDfile = os.path.join(sub_path, 'Dif_fsl_preprocessed', 'eddy', 'aligned2T1', 'dtiInit', 'dti94trilin', 'bin', 'MD_2mrQ.nii.gz')
-    R2file = os.path.join(sub_path, 'T2', 'R2map.nii.gz')
+    T2file = os.path.join(sub_path, 'T2', 'R2map.nii.gz')
     high_seg_file = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
     MD_seg_file = os.path.join(sub_path, 'Dif_fsl_preprocessed', 'eddy', 'aligned2T1', 'dtiInit', 'dti94trilin', 'bin', 'segFSLMPRAGE_BS_wmparc_B1corrALL_2DTI_resamp.nii.gz')
     R2_seg_file = os.path.join(sub_path, 'T2', 'segFSLMPRAGE_BS_wmparc_B1corrALL_2T2_resamp_BM.nii.gz')
 
-    if not (os.path.isfile(T1file) and os.path.isfile(TVfile) and os.path.isfile(R2sfile) and os.path.isfile(
-            MTfile) and os.path.isfile(MDfile) and os.path.isfile(R2file) and os.path.isfile(high_seg_file) and
+    if not (os.path.isfile(T1file) and os.path.isfile(MTVfile) and os.path.isfile(R2sfile) and os.path.isfile(
+            MTsatfile) and os.path.isfile(MDfile) and os.path.isfile(T2file) and os.path.isfile(high_seg_file) and
             os.path.isfile(MD_seg_file) and os.path.isfile(R2_seg_file)):
         return None
 
-    seg = nib.load(segfile)
-    t1 = nib.load(T1file)
-    r1 = 1 / t1.get_fdata()  # todo: problem with zero division, change later
-    r1 = np.nan_to_num(r1, posinf=0.0, neginf=0.0)
+    high_seg = load_table(high_seg_file)
+    Mtsat = load_table(MTsatfile)
+    R1 = load_table(T1file, r=True)
+    R2 = load_table(T2file, r=True)
+    R2s = load_table(R2sfile)
+    Mtv = load_table(MTVfile)
+    Md = load_table(MDfile)
+    MD_seg = load_table(MD_seg_file)
+    R2_seg = load_table(R2_seg_file)
+    name, age, gender = additional_data
 
-    tv = nib.load(TVfile)
-    tv = tv.get_fdata()
+    return HumanScans(Mtsat, R1, R2, R2s, Mtv, Md, high_seg, MD_seg, R2_seg, name, age, gender)
 
 
-    r2s = nib.load(R2sfile)
-    r2s = r2s.get_fdata()
+def load_all_subjects():
+    analysisDir = '/ems/elsc-labs/mezer-a/Mezer-Lab/analysis/HUJI/Calibration/Human'
+    subject_names = HUJI_subjects_preprocess(analysisDir)
+    subject_paths, names = get_subject_paths(analysisDir, 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz',
+                                             subject_names)
+    subjects = []
+    subject_details = pd.read_csv('/ems/elsc-labs/mezer-a/Mezer-Lab/analysis/HUJI/Calibration/Human/meta_ed.csv')
+    names = subject_details["SubID"].values
+    ages = subject_details["Age"].values
+    genders = subject_details["Sex"].values
+    additional_data = list(zip(names, ages, genders))[:-1]
+    for i, path in enumerate(subject_paths):
+        sub = load_human_data(path, additional_data[i])
+        if sub:
+            subjects.append(sub)
 
-
-    mt = nib.load(MTfile)
-    mt = mt.get_fdata()
-
-    seg = seg.get_fdata()
-
-    # measures = [t1, tv, r2s, mt]  # change back to t1 once you know how to fix the division by zero
-    measures = [r1, tv, r2s, mt]  # change back to r1 once you know how to fix the division by zero
-
-    return measures, seg
-
+    return subjects
+    # with open("subjects_clean_raw_data", 'wb') as subjects_scans:
+    #     pickle.dump(subjects, subjects_scans)
+    # with open('subjects_clean_raw_data.json', 'w') as f:
+    #     json.dump(subjects, f)
 
 def main():
     # SUBCORTICAL
@@ -151,23 +192,14 @@ def main():
                        53: 'Right-Hippocampus', 54: 'Right-Amygdala',
                        58: 'Right-Accumbens-area'}  # TODO: GOOD VERSION DO NOT DELETE!!!!
 
-    # corr by means
-    analysisDir = '/ems/elsc-labs/mezer-a/Mezer-Lab/analysis/HUJI/Calibration/Human'
-    subject_names = HUJI_subjects_preprocess(analysisDir)
-    subject_paths, names = get_subject_paths(analysisDir, 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz',
-                                             subject_names)
-    mea_names = ["t1", "tv", "r2s", "mt"]
-    rois = [10, 11, 12, 13, 17, 18, 26, 49, 50, 51, 52, 53, 54,
-            58]  # subcortical regions left and right TODO: GOOD VERSION DO NOT DELETE!!!!
-    mat_a = []
-    mat_b = []
-    for path in subject_paths:
-        measures, seg = load_human_data(path)
-        if measures != -1:
-            mat_a.append(measures)
-            mat_b.append(seg)
-            return measures, seg
+    # subcortical regions left and right TODO: GOOD VERSION DO NOT DELETE!!!!
+    rois = [10, 11, 12, 13, 17, 18, 26, 49, 50, 51, 52, 53, 54, 58]
 
+    subjects = load_all_subjects()
+
+    # with open("subjects_clean_raw_data", 'rb') as ib_data:
+    #     sub = pickle.load(ib_data)
+    a=1
 
 if __name__ == "__main__":
     main()

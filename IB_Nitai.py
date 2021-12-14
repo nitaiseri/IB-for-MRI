@@ -411,10 +411,10 @@ def main_analyze(analys_by, normal=None, beta_max=None):
 
 def main():
     # main_analyze(ANALYSE_BY_AREAS)
-    # for i, cluster_name in enumerate(CLUSTERS):
-    #     ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
-    #     mat = data.Data(ib_data.input_matrix)
-    #     plot_convergence_Dkl(ib_data)
+    for i, cluster_name in enumerate(CLUSTERS):
+        ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
+        mat, bins = Data.generate_new_prob(ib_data.input_matrix)
+        plot_convergence_Dkl(ib_data)
         # plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
 
     mat, bins = Data.generate_new_prob(np.array([[1,2,2,3, 3,3,4,5],[1,2,2,2,3,3,4, 5]]))
