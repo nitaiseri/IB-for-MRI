@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import scipy
 import nibabel as nib
+from typing import Union
+
 from scipy import stats
 from numpy import genfromtxt
 import os
@@ -93,7 +95,7 @@ def get_subject_paths(analysisDir, niba_file_name, subject_names):
     return subject_paths, subject_names
 
 
-def load_human_data(sub_path) -> HumanScans:
+def load_human_data(sub_path) -> Union[HumanScans, None]:
     """
     # Creates HumanScan Object that have np arrays of the parameters data, t1 ,r2s ,mt, tv and seg file
     # input: sub_path: string representing the folder path of a subject to their MRI scan data
@@ -106,15 +108,17 @@ def load_human_data(sub_path) -> HumanScans:
     TVfile = os.path.join(sub_path, 'mrQ_fixbias', 'OutPutFiles_1', 'BrainMaps', 'TV_map.nii.gz')
     R2sfile = os.path.join(sub_path, 'multiecho_flash_R2s', 'R2_mean_2TVfixB1.nii.gz')
     MTfile = os.path.join(sub_path, 'MT', 'MT_sat_mrQ_fixbias.nii.gz')
-    MDfile = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
-    R2file = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
+    MDfile = os.path.join(sub_path, 'Dif_fsl_preprocessed', 'eddy', 'aligned2T1', 'dtiInit', 'dti94trilin', 'bin', 'MD_2mrQ.nii.gz')
+    R2file = os.path.join(sub_path, 'T2', 'R2map.nii.gz')
     high_seg_file = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
-    MD_seg_file = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
-    R2_seg_file = os.path.join(sub_path, 'freesurfer', 'segFSLMPRAGE_BS_wmparc2newmrQ_B1corrALL.nii.gz')
+    MD_seg_file = os.path.join(sub_path, 'Dif_fsl_preprocessed', 'eddy', 'aligned2T1', 'dtiInit', 'dti94trilin', 'bin', 'segFSLMPRAGE_BS_wmparc_B1corrALL_2DTI_resamp.nii.gz')
+    R2_seg_file = os.path.join(sub_path, 'T2', 'segFSLMPRAGE_BS_wmparc_B1corrALL_2T2_resamp_BM.nii.gz')
 
-    if not os.path.isfile(T1file) or not os.path.isfile(TVfile) or not os.path.isfile(R2sfile) or not os.path.isfile(
-            MTfile) or not os.path.isfile(segfile):
-        return -1, -1  # -1 acts as a return code
+    if not (os.path.isfile(T1file) and os.path.isfile(TVfile) and os.path.isfile(R2sfile) and os.path.isfile(
+            MTfile) and os.path.isfile(MDfile) and os.path.isfile(R2file) and os.path.isfile(high_seg_file) and
+            os.path.isfile(MD_seg_file) and os.path.isfile(R2_seg_file)):
+        return None
+
     seg = nib.load(segfile)
     t1 = nib.load(T1file)
     r1 = 1 / t1.get_fdata()  # todo: problem with zero division, change later
