@@ -33,11 +33,11 @@ class HumanScans:
     def get_indexes_of_area(self, area_num):
         return np.argwhere(self.high_seg == area_num)
 
-    def get_num_of_voxels_in_area(self, area_num):
-        ind = self.get_indexes_of_area(area_num)
+    def get_num_of_voxels_in_areas(self, area_nums):
+        return self.get_indexes_of_area(area_num).shape[0]
 
     def get_mean_per_param(self, param):
-        pass
+
 
     def get_histogram_per_area(self, param):
         pass
@@ -177,6 +177,7 @@ def load_all_subjects():
         sub = load_human_data(path, additional_data[i])
         if sub:
             subjects.append(sub)
+            return sub
 
     return subjects
     # with open("subjects_clean_raw_data", 'wb') as subjects_scans:
@@ -195,7 +196,11 @@ def main():
     # subcortical regions left and right TODO: GOOD VERSION DO NOT DELETE!!!!
     rois = [10, 11, 12, 13, 17, 18, 26, 49, 50, 51, 52, 53, 54, 58]
 
-    subjects = load_all_subjects()
+    subject = load_all_subjects()
+    nums = []
+    for area in sub_cortex_dict.keys():
+        nums.append(subject.get_indexes_of_area(area))
+    summm = np.sum(np.array(nums))
 
     # with open("subjects_clean_raw_data", 'rb') as ib_data:
     #     sub = pickle.load(ib_data)

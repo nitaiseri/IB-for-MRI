@@ -410,7 +410,7 @@ def main_analyze(analys_by, normal=None, beta_max=None):
 
 
 def main():
-    # main_analyze(ANALYSE_BY_AREAS)
+    main_analyze(ANALYSE_BY_AREAS)
     for i, cluster_name in enumerate(CLUSTERS):
         ib_data = load_analysed_data("data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + cluster_name + "-" + ANALYSE_TYPE)
         mat, bins = Data.generate_new_prob(ib_data.input_matrix)
