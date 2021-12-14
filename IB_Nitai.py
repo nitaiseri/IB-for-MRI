@@ -7,7 +7,7 @@ from scipy.io import loadmat
 from scipy.cluster import hierarchy
 import matplotlib
 import pickle
-import data
+from data import Data
 
 CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
 # CLUSTERS = ["MTV", "R2s"]
@@ -417,8 +417,8 @@ def main():
     #     plot_convergence_Dkl(ib_data)
         # plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
 
-    mat = data.Data(np.array([[1,2,3],[3,3,4]]))
-    mat.generate_new_prob()
+    mat, bins = Data.generate_new_prob(np.array([[1,2,2,3, 3,3,4,5],[1,2,2,2,3,3,4, 5]]))
+    breakpoint()
 
 if __name__ == '__main__':
     main()
