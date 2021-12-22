@@ -40,7 +40,7 @@ SEG_MAP = {MT_SAT: HIGH_SEG,
 
 class HumanScans:
     """
-    class that represent and keep scans data for one subject.
+    class that represent and keep data of MRI scans for one subject.
     """
 
     def __init__(self, Mtsat, R_1, R_2, R2s, Mtv, Md, high_seg, MD_seg, R2_seg, name, age, gender):
