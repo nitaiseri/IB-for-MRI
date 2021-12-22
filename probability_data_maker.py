@@ -35,6 +35,8 @@ class ProbabilityMaker:
 
     @staticmethod
     def mean_probability_data(subjects: List[HumanScans], parameter, means) -> np.array:
+        voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
+        sigmas = np.array([np.std(voxel) for voxel in voxels])
         return np.array([ProbabilityMaker.smooth_histogram(subject_mean, subject_mean, 1000) for subject_mean in means])
 
     @staticmethod
@@ -62,11 +64,6 @@ def generate_data():
         tables = []
         for parameter in PARAMETERS:
             means = np.array([subject.get_mean_per_param(parameter) for subject in subjects])
-            voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
-            a = np.mean(means)
-            b = a * 0.05
-            c = np.std(means)
-            d = np.array([np.std(voxel) for voxel in voxels])
             tables.append(func(subjects, parameter, means))
         with open('raw_data/new/' + file_name + '.npy', 'wb') as f:
             np.save(f, np.array(tables))
