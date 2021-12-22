@@ -25,6 +25,10 @@ class Data:
         # counts = counts.T / np.sum(counts.T, axis=0)
         # a = 1
 
+if __name__ == '__main__':
+    mu = np.random.choice([2, 3, 5, 1], 10)
+    sigma = np.random.choice([2, 1, 3, 1], 10)
 
+    a = np.random.normal(size=(10, 10)) * sigma[:, None] + mu[:, None]
 
 
