@@ -262,6 +262,7 @@ def load_all_subjects():
         sub = load_human_data(path, additional_data[i])
         if sub:
             subjects.append(sub)
+            return sub
     return subjects
 
     # with open("subjects_clean_raw_data", 'wb') as subjects_scans:
@@ -275,7 +276,8 @@ def main():
     rois = [10, 11, 12, 13, 17, 18, 26, 49, 50, 51, 52, 53, 54, 58]
 
     subject = load_all_subjects()
-    nums = []
+
+
     for parameter in PARAMETERS:
         mean = subject.get_mean_per_param(parameter)
     # summm = np.sum(np.array(nums))
@@ -286,4 +288,13 @@ def main():
 if __name__ == "__main__":
     # with open('subjects_clean_raw_data', 'rb') as f:
     #     subjects = pickle.load(f)
-    main()
+    # data = [load_all_subjects()]
+    # with open('sub', "wb") as f:
+    #     pickle.dump(len(data), f)
+    #     for value in data:
+    #         pickle.dump(value, f)
+    data2 = []
+    with open('sub', "rb") as f:
+        for _ in range(pickle.load(f)):
+            data2.append(pickle.load(f))
+    a=1
