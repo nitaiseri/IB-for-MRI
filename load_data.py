@@ -18,7 +18,7 @@ SUB_CORTEX_DICT = {10: 'Left-Thalamus-Proper', 11: 'Left-Caudate', 12: 'Left-Put
                    17: 'Left-Hippocampus', 18: 'Left-Amygdala', 26: 'Left-Accumbens-area',
                    49: 'Right-Thalamus-Proper', 50: 'Right-Caudate', 51: 'Right-Putamen', 52: 'Right-Pallidum',
                    53: 'Right-Hippocampus', 54: 'Right-Amygdala',
-                   58: 'Right-Accumbens-area'}  # TODO: GOOD VERSION DO NOT DELETE!!!!
+                   58: 'Right-Accumbens-area'}  # GOOD VERSION DO NOT DELETE!!!!
 
 HIGH_SEG = "high_seg"
 MD_SEG = "MD_seg"
@@ -108,7 +108,7 @@ class HumanScans:
         :param parameter: the type of scan
         :return: np array of the means per area.
         """
-        return np.array([np.mean(area_vals) for area_vals in self.get_values_voxel(parameter)])
+        return np.array([(np.mean(area_vals), np.std(area_vals)) for area_vals in self.get_values_voxel(parameter)])
 
     def get_all_voxels_per_areas(self, parameter):
         """
@@ -262,7 +262,7 @@ def load_all_subjects():
         sub = load_human_data(path, additional_data[i])
         if sub:
             subjects.append(sub)
-            return sub
+            return [sub]
     return subjects
 
     # with open("subjects_clean_raw_data", 'wb') as subjects_scans:
@@ -272,9 +272,6 @@ def load_all_subjects():
     # return s
 
 def main():
-    # subcortical regions left and right TODO: GOOD VERSION DO NOT DELETE!!!!
-    rois = [10, 11, 12, 13, 17, 18, 26, 49, 50, 51, 52, 53, 54, 58]
-
     subject = load_all_subjects()
 
 
@@ -286,6 +283,7 @@ def main():
     #     sub = pickle.load(ib_data)
 
 if __name__ == "__main__":
+    main()
     # with open('subjects_clean_raw_data', 'rb') as f:
     #     subjects = pickle.load(f)
     # data = [load_all_subjects()]
