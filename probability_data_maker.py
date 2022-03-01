@@ -11,7 +11,9 @@ from numpy.random import normal
 from numpy import hstack
 from numpy import asarray
 from numpy import exp
-
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import LeaveOneOut
 
 
 class ProbabilityMaker:
@@ -144,26 +146,53 @@ def generate_data():
             np.save(f, np.array(tables))
 
 
-def sum_gaussian(means, stds):
-    # generate a sample
-    samples = np.array([])
-    for i in range(means.shape[0]):
-        sample = normal(loc=means[i], scale=stds[i], size=1000)
-        samples = hstack((samples, sample))
-    points = np.linspace(samples.min(), samples.max(), num=100)
-    values = np.array([np.sum(np.exp(-0.5*((point-means)/stds)**2)/(np.sqrt(2*np.pi)*stds)) for point in points])
-    values = values/(np.sum(values)*((samples.max()-samples.min())/100))
-    a = plt.hist(samples, bins=50, density=True)
-    plt.plot(points, values)
-    plt.show()
+def sum_gaussian(means, stds, values_to_calc=None, plot=False):
+
+    if not values_to_calc:
+        num_of_delta_x = 100
+        # generate a sample
+        samples = np.array([])
+        for i in range(means.shape[0]):
+            sample = normal(loc=means[i], scale=stds[i], size=1000)
+            samples = hstack((samples, sample))
+
+        # manual calculate sum of exp
+        points = np.linspace(samples.min(), samples.max(), num=num_of_delta_x)
+        values = np.array([np.sum(np.exp(-0.5*((point-means)/stds)**2)/(np.sqrt(2*np.pi)*stds)) for point in points])
+        values = values/(np.sum(values)*((samples.max()-samples.min())/num_of_delta_x))
+
+        # sample = samples.reshape((len(samples), 1))
+        # # trying best fit
+        # bandwidths = 10 ** np.linspace(-1, 1, 100)
+        # grid = GridSearchCV(KernelDensity(kernel='gaussian'),
+        #                     {'bandwidth': bandwidths},
+        #                     cv=LeaveOneOut())
+        # grid.fit(sample[:, None])
+        #
+        # # calculate with kernel density estimation
+        # model = KernelDensity(bandwidth=0.4, kernel='gaussian')
+        # model.fit(sample)
+        # kd_points = points.reshape((len(points), 1))
+        # probabilities = model.score_samples(kd_points)
+        # probabilities = exp(probabilities)
+        #
+
+        # # plots all together
+        # plt.plot(kd_points, probabilities)
+
+        hist_values, bins, other = plt.hist(samples, bins=50, density=True)
+        plt.plot(points, values)
+        plt.show()
+
+    else:
+        return np.array([np.sum(np.exp(-0.5*((val-means)/stds)**2)/(np.sqrt(2*np.pi)*stds)) for val in values_to_calc])
 
 
 if __name__ == '__main__':
     # example of kernel density estimation for a bimodal data sample
 
-    from sklearn.neighbors import KernelDensity
-
-    # generate a sample
+    #
+    # # generate a sample
     # sample1 = normal(loc=20, scale=5, size=300)
     # sample2 = normal(loc=40, scale=5, size=700)
     # sample = hstack((sample1, sample2))
@@ -183,7 +212,7 @@ if __name__ == '__main__':
 
     means = np.array([1, 3, 5])
     stds = np.ones(means.shape[0])/2
-    sum_gaussian(means, stds)
+    print(sum_gaussian(means, stds, [0,1,2]))
     #
     # # plot the histogram
     # a = plt.hist(samples, bins=50, cumulative=False)

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import scipy
-import nibabel as nib
+#import nibabel as nib
 from typing import Union
 import json
 from scipy import stats
