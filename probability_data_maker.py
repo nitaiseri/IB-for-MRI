@@ -11,13 +11,24 @@ from numpy.random import normal
 from numpy import hstack
 from numpy import asarray
 from numpy import exp
-
+from sklearn.neighbors import KernelDensity
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import LeaveOneOut
 
 
 class ProbabilityMaker:
     """
     An abstract class to to calculate probability tables out of list of HumanScans
     """
+    @staticmethod
+    def get_means_std(subjects: List[HumanScans], parameter):
+        means = [], stds = []
+        for subject in subjects:
+            mean, std = subject.get_mean_std_per_param(parameter)
+            means.append(mean)
+            stds.append(std)
+        return np.array(means), np.array(stds)
+
     @staticmethod
     def smooth_histogram(points, means, num_of_add_noise=None):
         """
@@ -56,7 +67,7 @@ class ProbabilityMaker:
         # plt.show()
 
     @staticmethod
-    def mean_probability_data(subjects: List[HumanScans], parameter, means) -> np.array:
+    def mean_probability_data(subjects: List[HumanScans], parameter) -> np.array:
         """
         given list of subjects, parameter of scan and list of means of each area, calculate the
         probability table (areas over subjects) from generating points from those means.
@@ -66,9 +77,16 @@ class ProbabilityMaker:
         particular value.
         :return: 2d np table of the probability to get each the mean value of area given subject.
         """
-        voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
-        sigmas = np.array([np.std(voxel) for voxel in voxels])
-        return np.array([ProbabilityMaker.smooth_histogram(subject_mean, subject_mean, 1000) for subject_mean in means])
+        # voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
+        # sigmas = np.array([np.std(voxel) for voxel in voxels])
+        prob_table = []
+        means, stds = ProbabilityMaker.get_means_std(subjects, parameter)
+        means = means.T
+        stds = stds.T
+        for i in range(len(means)):
+            prob_table.append(get_gaussian_pdf(means[i], stds[i], means[i]))
+        prob_table = np.array(prob_table)
+        return prob_table/prob_table.sum(axis=1)[:, np.newaxis]
 
     @staticmethod
     def voxels_in_areas_probability(subjects: List[HumanScans], parameter, means) -> np.array:
@@ -81,7 +99,15 @@ class ProbabilityMaker:
          particular value.
          :return: 2d np table of the probability to get each the mean value of area given subject.
          """
+        prob_table = []
+        means, stds = ProbabilityMaker.get_means_std(subjects, parameter)
+        means = means.T
+        stds = stds.T
         voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
+        for i in range(len(means)):
+            prob_table.append(get_gaussian_pdf(means[i], stds[i], means[i]))
+        prob_table = np.array(prob_table)
+        return prob_table/prob_table.sum(axis=1)[:, np.newaxis]
         return np.array([ProbabilityMaker.smooth_histogram(voxels[i], means[i]) for i in range(len(means))])
 
     @staticmethod
@@ -144,47 +170,85 @@ def generate_data():
             np.save(f, np.array(tables))
 
 
-def sum_gaussian(means, stds):
+def get_gaussian_pdf(means, stds, points):
+    """
+    calculate the pdf function of normal distribution define by means and std and return
+    the values at specific points.
+    @param means: nd_array of single value of mean(for distribution).
+    @param stds: nd_array of single value of std(for distribution).
+    @param points: the points to calculate the value of the calculated pdf at those points.
+    @return: list of pdf values of the sum of normal distributions at points. (or single value in case of single point).
+    """
+    if type(points).__module__ != np.__name__ and not isinstance(points, list):
+        return np.sum(np.exp(-0.5 * ((points - means) / stds) ** 2) / (np.sqrt(2 * np.pi) * stds))
+    return np.array([np.sum(np.exp(-0.5 * ((point - means) / stds) ** 2) / (np.sqrt(2 * np.pi) * stds)) for point in points])
+
+
+def get_gaussian_cdf(means, stds, points):
+    """
+    calculate the cdf function of normal distribution define by means and std and return
+    the values at specific points.
+    @param means: nd_array of single value of mean(for distribution).
+    @param stds: nd_array of single value of std(for distribution).
+    @param points: the points to calculate the value of the calculated pdf at those points.
+    @return: list of pdf values of the sum of normal distributions at points. (or single value in case of single point).
+    """
+    pdf_points, pdf_values = sum_gaussian(means, stds)
+    cdf_values = np.cumsum(pdf_values/np.sum(pdf_values))
+    cdf_values = np.concatenate([[0], cdf_values])
+    if type(points).__module__ != np.__name__ and not isinstance(points, list):
+        return cdf_values[np.digitize(points, pdf_points)]
+    indicies = np.digitize(points, pdf_points)
+    return np.array([cdf_values[index] for index in indicies])
+
+
+def sum_gaussian(means, stds, plot=False):
+    num_of_delta_x = 100
     # generate a sample
     samples = np.array([])
     for i in range(means.shape[0]):
         sample = normal(loc=means[i], scale=stds[i], size=1000)
         samples = hstack((samples, sample))
-    points = np.linspace(samples.min(), samples.max(), num=100)
-    values = np.array([np.sum(np.exp(-0.5*((point-means)/stds)**2)/(np.sqrt(2*np.pi)*stds)) for point in points])
-    values = values/np.sum(values)
-                     #*((samples.max()-samples.min())/100))
-    a = plt.hist(samples, bins=50, density=True)
-    plt.plot(points, values)
-    plt.show()
+
+    # manual calculate sum of exp
+    points = np.linspace(samples.min(), samples.max(), num=num_of_delta_x)
+    values = get_gaussian_pdf(means, stds, points)
+    values = values/(np.sum(values)*((samples.max()-samples.min())/num_of_delta_x))
+
+    # sample = samples.reshape((len(samples), 1))
+    # # trying best fit
+    # bandwidths = 10 ** np.linspace(-1, 1, 100)
+    # grid = GridSearchCV(KernelDensity(kernel='gaussian'),
+    #                     {'bandwidth': bandwidths},
+    #                     cv=LeaveOneOut())
+    # grid.fit(sample[:, None])
+    #
+    # # calculate with kernel density estimation
+    # model = KernelDensity(bandwidth=0.4, kernel='gaussian')
+    # model.fit(sample)
+    # kd_points = points.reshape((len(points), 1))
+    # probabilities = model.score_samples(kd_points)
+    # probabilities = exp(probabilities)
+    #
+
+    # # plots all together
+    # plt.plot(kd_points, probabilities)
+    if plot:
+        hist_values, bins, other = plt.hist(samples, bins=75, density=True)
+        values_2 = get_gaussian_cdf(means, stds, points)
+        plt.plot(points, values)
+        plt.plot(points, values_2)
+        plt.show()
+    return points, values
 
 
 if __name__ == '__main__':
-    # example of kernel density estimation for a bimodal data sample
-
-    from sklearn.neighbors import KernelDensity
-
-    # generate a sample
-    # sample1 = normal(loc=20, scale=5, size=300)
-    # sample2 = normal(loc=40, scale=5, size=700)
-    # sample = hstack((sample1, sample2))
-    # # fit density
-    # model = KernelDensity(bandwidth=2, kernel='gaussian')
-    # sample = sample.reshape((len(sample), 1))
-    # model.fit(sample)
-    # # sample probabilities for a range of outcomes
-    # values = asarray([value for value in range(1, 60)])
-    # values = values.reshape((len(values), 1))
-    # probabilities = model.score_samples(values)
-    # probabilities = exp(probabilities)
-    # # plot the histogram and pdf
-    # plt.hist(sample, bins=50, density=True)
-    # plt.plot(values[:], probabilities)
-    # plt.show()
-
-    means = np.array([1, 3, 5])
+    means = np.array(range(2))*2
     stds = np.ones(means.shape[0])/2
-    sum_gaussian(means, stds)
+    sum_gaussian(means, stds, True)
+    # print(get_gaussian_pdf(means, stds, 5))
+
+    # print(sum_gaussian(means, stds))
     #
     # # plot the histogram
     # a = plt.hist(samples, bins=50, cumulative=False)

@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import scipy
-import nibabel as nib
+#import nibabel as nib
 from typing import Union
 import json
 from scipy import stats
@@ -102,13 +102,13 @@ class HumanScans:
             values_per_area.append(self.parameters[parameter][nums[0], nums[1], nums[2]])
         return values_per_area
 
-    def get_mean_per_param(self, parameter):
+    def get_mean_std_per_param(self, parameter):
         """
-        calculate the mean value per area in the subject
+        calculate the mean and std value per area in the subject
         :param parameter: the type of scan
-        :return: np array of the means per area.
+        :return: np array of array of the means per area and array of the std per area.
         """
-        return np.array([(np.mean(area_vals), np.std(area_vals)) for area_vals in self.get_values_voxel(parameter)])
+        return np.array([(np.mean(area_vals), np.std(area_vals)) for area_vals in self.get_values_voxel(parameter)]).T
 
     def get_all_voxels_per_areas(self, parameter):
         """
