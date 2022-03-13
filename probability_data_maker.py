@@ -3,7 +3,7 @@ from typing import List
 from scipy.stats import norm
 from load_data import *
 import seaborn as sns
-from fitter import Fitter
+# from fitter import Fitter
 import scipy.stats
 from matplotlib import pyplot as plt
 import os
@@ -152,7 +152,8 @@ def sum_gaussian(means, stds):
         samples = hstack((samples, sample))
     points = np.linspace(samples.min(), samples.max(), num=100)
     values = np.array([np.sum(np.exp(-0.5*((point-means)/stds)**2)/(np.sqrt(2*np.pi)*stds)) for point in points])
-    values = values/(np.sum(values)*((samples.max()-samples.min())/100))
+    values = values/np.sum(values)
+                     #*((samples.max()-samples.min())/100))
     a = plt.hist(samples, bins=50, density=True)
     plt.plot(points, values)
     plt.show()
