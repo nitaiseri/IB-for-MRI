@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import pickle
 import scipy
-#import nibabel as nib
+import nibabel as nib
 from typing import Union
 import json
 from scipy import stats
@@ -117,10 +117,12 @@ class HumanScans:
         :return: np array of the voxels in all relevant area.
         """
         voxels = np.array([])
+        stds = np.array([])
         arrs = self.get_values_voxel(parameter)
         for arr in arrs:
             voxels = np.concatenate((voxels, arr))
-        return voxels
+            stds = np.concatenate((stds, np.ones(arr.shape[0])*np.std(arr)))
+        return voxels, stds
 
     def get_all_voxels(self, parameter):
         """
@@ -262,7 +264,6 @@ def load_all_subjects():
         sub = load_human_data(path, additional_data[i])
         if sub:
             subjects.append(sub)
-            return [sub]
     return subjects
 
     # with open("subjects_clean_raw_data", 'wb') as subjects_scans:
@@ -271,28 +272,25 @@ def load_all_subjects():
     #     s = pickle.load(subjects_scans)
     # return s
 
+def save_data(subjects):
+    subjects_data = []
+    for i, subject in enumerate(subjects):
+        subjects_data.append([i, subject.age, subject.gender])
+    with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/subjects.npy', 'wb') as f:
+                np.save(f, subjects_data)
+    with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/areas.npy', 'wb') as f:
+                np.save(f, list(SUB_CORTEX_DICT.values()))
+
 def main():
-    subject = load_all_subjects()
-
-
-    for parameter in PARAMETERS:
-        mean = subject.get_mean_per_param(parameter)
-    # summm = np.sum(np.array(nums))
-
-    # with open("subjects_clean_raw_data", 'rb') as ib_data:
-    #     sub = pickle.load(ib_data)
-
+    subjects = load_all_subjects()
+    save_data(subjects)
+    
+    
 if __name__ == "__main__":
     main()
-    # with open('subjects_clean_raw_data', 'rb') as f:
-    #     subjects = pickle.load(f)
-    # data = [load_all_subjects()]
-    # with open('sub', "wb") as f:
-    #     pickle.dump(len(data), f)
-    #     for value in data:
-    #         pickle.dump(value, f)
-    data2 = []
-    with open('sub', "rb") as f:
-        for _ in range(pickle.load(f)):
-            data2.append(pickle.load(f))
-    a=1
+    with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/subjects.npy', 'rb') as f:
+                a = np.load(f)
+    with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/areas.npy', 'rb') as f:
+                b = np.load(f)
+                
+

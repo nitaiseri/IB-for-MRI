@@ -10,10 +10,12 @@ import pickle
 from data import Data
 
 CLUSTERS = ["MTsat", "R1", "MD", "R2", "MTV", "R2s"]
+PARAMETERS = ["Mtsat", "R1", "Md", "R2", "Mtv", "R2s"]
+
 # CLUSTERS = ["MTV", "R2s"]
 CLUSTERS_DIC = {"MTsat": 0, "R1": 1, "MD": 2, "R2": 3, "MTV": 4, "R2s": 5}
 NUM_OF_BETA = 700
-END_NAME = "one_over"
+END_NAME = ""
 SOURCE_DIR = END_NAME + "/"
 MTsat, R1, MD, R2, MTV, R2s = 0, 1, 2, 3, 4, 5
 ANALYSE_BY_AREAS = True
@@ -231,7 +233,7 @@ class IB:
         self.get_clusters()
         if not name_of_file:
             name_of_file = self.name_of_scan
-        filename = "data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + name_of_file + "-" + ANALYSE_TYPE
+        filename = "data/" + SOURCE_DIR + ANALYSE_TYPE + "/" + name_of_file 
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, 'wb') as ib_data_after_analysis:
             pickle.dump(self, ib_data_after_analysis)
@@ -239,7 +241,7 @@ class IB:
 
     def find_beta_max(self):
         beta = 2000
-        while True:
+        while beta < 30000:
             p_y_x, p_x, p_x_hat_given_x = self.prepare_prob(self.input_matrix)
             err = 1
             index = 0
@@ -256,6 +258,7 @@ class IB:
             if rank == self.input_matrix.shape[1]:
                 return beta
             beta += 500
+        return beta
 
     def find_more_then_one(self):
         bad_betas = []
@@ -393,7 +396,7 @@ def plot_hierarchy(ib_data, Z):
     plt.tight_layout()
 
     hierarchy.set_link_color_palette(['#993404', '#64ad30', '#a2142e', '#7e2f8e'][::-1])
-    filename = "plots/" + SOURCE_DIR + ANALYSE_TYPE + "/" + "hierarchy/" + str(ib_data.name_of_scan) + ANALYSE_TYPE + "-" + END_NAME + ".png"
+    filename = "plots" + SOURCE_DIR + ANALYSE_TYPE + "/" + "hierarchy/" + str(ib_data.name_of_scan) + ".png"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     plt.savefig(filename)
     # plt.show()
@@ -419,6 +422,65 @@ def main():
 
     mat, bins = Data.generate_new_prob(np.array([[1,2,2,3, 3,3,4,5],[1,2,2,2,3,3,4, 5]]))
     breakpoint()
+    
+    
+def load_data_2(path):
+    with open(path + '/subjects.npy', 'rb') as f:
+        subjects = np.load(f)
+    with open(path + '/areas.npy', 'rb') as f:
+        areas = np.load(f)
+    prob_mats = []
+    normalization_directories  = [a for a in os.listdir(path) if os.path.isdir(path + '/' + a)]
+    for directory_name in normalization_directories:
+        tables = []
+        for parameter in PARAMETERS:
+            with open(path + '/' + directory_name + '/' + parameter + '.npy', 'rb') as f:
+                tables.append(np.load(f).T)
+        prob_mats.append(tables)
+    return prob_mats, subjects, areas    
+    
+
+def main_2(path, normal=None, beta_max=None):
+    input_matrixes, subjects, area_names = load_data_2(path)
+    beta_values = generate_beta(beta_max, NUM_OF_BETA) if beta_max else None
+    normalization_directories  = [a for a in os.listdir(path) if os.path.isdir(path + '/' + a)]
+    for i, directory_name in enumerate(normalization_directories):
+        if i <2: 
+            continue
+        for j, parameter in enumerate(PARAMETERS):
+            ib_data = IB(input_matrixes[i][j], subjects, None,
+                        area_names, None, beta_values, directory_name + '/' + parameter, normal)
+            ib_data.run_analysis()
+            # ib_data = load_analysed_data("data" + SOURCE_DIR + ANALYSE_TYPE + "/" + directory_name + '/' + parameter)
+            plot_hierarchy(ib_data, pre_pros_for_hierarchy(ib_data))
+
+   
+    
 
 if __name__ == '__main__':
-    main()
+    main_2('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new')
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
