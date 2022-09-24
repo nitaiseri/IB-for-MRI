@@ -3,7 +3,6 @@ from typing import List
 from scipy.stats import norm
 from load_data import *
 import seaborn as sns
-# from fitter import Fitter
 import scipy.stats
 from matplotlib import pyplot as plt
 import os
@@ -11,9 +10,12 @@ from numpy.random import normal
 from numpy import hstack
 from numpy import asarray
 from numpy import exp
-# from sklearn.neighbors import KernelDensity
-# from sklearn.model_selection import GridSearchCV
-# from sklearn.model_selection import LeaveOneOut
+import random
+import load_data
+from Consts import *
+from config import *
+import probability_data_maker as pdm
+
 
 
 class ProbabilityMaker:
@@ -21,7 +23,13 @@ class ProbabilityMaker:
     An abstract class to to calculate probability tables out of list of HumanScans
     """
     @staticmethod
-    def get_means_std(subjects: List[HumanScans], parameter):
+    def get_means_std(subjects, parameter):
+        """
+        Calculate and return list of means and stds per area.
+        :param subjects: The subjects to calculate over.
+        :param parameter: the parameter the calculation work on.
+        :return: 2 lists of 2 dim nd array. for each subject, array per area.
+        """
         means = [] 
         stds = []
         for subject in subjects:
@@ -30,45 +38,13 @@ class ProbabilityMaker:
             stds.append(std)
         return np.array(means), np.array(stds)
 
-    # @staticmethod
-    # def smooth_histogram(points, means, num_of_add_noise=None):
-    #     """
-    #     given values of qMRI scans (can be mean of each area, all voxels of relevant areas,
-    #     or all voxels and so on) calculate the probability to get the value of the mean of
-    #     each area.
-    #     :param points: nd array of values to consider.
-    #     :param means: nd array of means of each area that we want to know the probability to get this
-    #     particular value.
-    #     :param num_of_add_noise: optional parameter, if we wand add noise to each point because we dont have
-    #     enough, so we generate artificial point from normal distributions with mean of the value. so this is
-    #     number of points we want to add for each point.
-    #     :return: list of probabilities to get each mean we get in means(already normalize to 1)
-    #     """
-    #     #TODO: still missing. this fit is not good. need to replace with cumulative distribution function,
-    #     # and integrate to each point.
-    #     if num_of_add_noise:
-    #         num_of_gaussians = len(points)
-    #         sigma = np.ones(num_of_gaussians)*(np.mean(points)*0.05)
-    #         values = (np.random.normal(size=(num_of_gaussians, num_of_add_noise)) * sigma[:, None] + points[:, None]).flatten()
-    #     else:
-    #         values = points
-    #     fit = Fitter(list(values), distributions=[
-    #                                     # 'gamma',
-    #                                     # 'lognorm',
-    #                                     # "beta",
-    #                                     # "burr",
-    #                                     "norm"])
-    #     fit.fit()
-    #     # fit.summary()
-    #     dist = scipy.stats.gamma
-    #     param = fit.fitted_param['norm']
-    #     pdf_fitted = dist.pdf(means, *param)
-    #     return pdf_fitted/np.sum(pdf_fitted)
-    #     # plt.plot(means, pdf_fitted, 'o-')
-    #     # plt.show()
+    ### The next three function are 3 methods to calculate the probability function of qMRI values. ###
+    ### We check three of them and examined the outcome. Bottom line, we need only one of them,     ###
+    ### and we not sure, but it seems to be that the second one  'voxels_in_areas_probability'      ###
+    ### look that works better.                                                                     ###
 
     @staticmethod
-    def mean_probability_data(subjects: List[HumanScans], parameter, means) -> np.array:
+    def mean_probability_data(subjects, parameter, means, path) -> np.array:
         """
         given list of subjects, parameter of scan and list of means of each area, calculate the
         probability table (areas over subjects) from generating points from those means.
@@ -78,17 +54,16 @@ class ProbabilityMaker:
         particular value.
         :return: 2d np table of the probability to get each the mean value of area given subject.
         """
-        # voxels = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
-        # sigmas = np.array([np.std(voxel) for voxel in voxels])
         prob_table = []
         means, stds = ProbabilityMaker.get_means_std(subjects, parameter)
         for i in range(len(means)):
-            prob_table.append(get_gaussian_pdf(means[i], stds[i], means[i]))
+            prob_table.append(sum_gaussian(means[i], stds[i],means[i], PLOT, "per_mean "+parameter, path))
+
         prob_table = np.array(prob_table)
         return prob_table/prob_table.sum(axis=1)[:, np.newaxis]
 
     @staticmethod
-    def voxels_in_areas_probability(subjects: List[HumanScans], parameter, means) -> np.array:
+    def voxels_in_areas_probability(subjects, parameter, means, path) -> np.array:
         """
          given list of subjects, parameter of scan and list of means of each area, calculate the
          probability table (areas over subjects) from all voxels in those areas.
@@ -101,12 +76,13 @@ class ProbabilityMaker:
         prob_table = []
         params = np.array([subject.get_all_voxels_per_areas(parameter) for subject in subjects])
         for i in range(params.shape[0]):
-            prob_table.append(get_gaussian_pdf(params[i][0], params[i][1], means[i]))
+            filteres_means, filtered_stds = filter_values(params[i][0], params[i][1])
+            prob_table.append(sum_gaussian(filteres_means, filtered_stds , means[i], PLOT, "per_area "+parameter, path))
         prob_table = np.array(prob_table)
         return prob_table/prob_table.sum(axis=1)[:, np.newaxis]
 
     @staticmethod
-    def total_voxels_probability(subjects: List[HumanScans], parameter, means) -> np.array:
+    def total_voxels_probability(subjects, parameter, means, path) -> np.array:
         """
          given list of subjects, parameter of scan and list of means of each area, calculate the
          probability table (areas over subjects) from all voxels in the subject brain.
@@ -119,35 +95,77 @@ class ProbabilityMaker:
         prob_table = []
         voxels = np.array([subject.get_all_voxels(parameter) for subject in subjects])
         for i in range(len(subjects)):
-            num_of_voxs = voxels[i].shape[0]
-            prob_table.append(get_gaussian_pdf(voxels[i], np.ones(num_of_voxs)*np.std(voxels[i]), means[i]))
+            voxs = filter_values(voxels[i])
+            stds = np.ones(voxs.shape[0])*np.mean(voxs) * 0.03
+            num_of_voxs = voxs.shape[0]
+            # prob_table.append(get_gaussian_pdf(voxels[i], np.ones(num_of_voxs)*np.std(voxels[i]), means[i]))
+            prob_table.append(sum_gaussian(voxs, stds, means[i], PLOT, "total "+parameter, path))
+
         prob_table = np.array(prob_table)
         return prob_table/prob_table.sum(axis=1)[:, np.newaxis]
 
+def filter_values(vals, optional_vals=np.array([0])):
+    """
+    filter values of voxels which is too strange. mean, filter out those who 4std away from the mean.
+    :param vals: the values to filter.
+    :param optional_vals: more vals to filter.
+    :return: the filtered values.
+    """
+    mask = (vals < (np.mean(vals)+4*np.std(vals))) & (vals > 0) & (vals > (np.mean(vals)-4*np.std(vals)))
+    if optional_vals.any():
+        return vals[mask], optional_vals[mask]
+    return vals[mask]
 
-def generate_data():
+
+def generate_data(subjects=None, sub_path=None):
     """
     general function that ran through those three functions and generate probability table for each
     function, for each parameter of scan and save them.
     """
-    #TODO: the save part not complete yet. dunno way but cannot save it with np.save.
-    PROB_FUNC_OPTIONS = [(ProbabilityMaker.mean_probability_data, "per_mean"),
-                          (ProbabilityMaker.voxels_in_areas_probability, "per_area"),
-                           (ProbabilityMaker.total_voxels_probability, "total")]
+    if RUN:
+        pk_generate_data(subjects, sub_path)
+    else:
+        path = RAW_DATA_PATH + sub_path
+        if not subjects:
+            subjects = load_all_HUJI_subjects()
+            
+            # The path to where save the data and plots.
+            path = '/no_name/'
+        
+            # save data of subject and areas for the IB
+            save_data(subjects, path)
+        
+        # Loop over function
+        for func, file_name in PROB_FUNC_OPTIONS:
+            if not os.path.exists(path + file_name + '/'):
+                os.makedirs(path + file_name + '/')
+            # Loop over prameters
+            for parameter in PARAMETERS:
+                means, stds = ProbabilityMaker.get_means_std(subjects, parameter)
+                table = func(subjects, parameter, means, path)
+                with open(path + file_name + '/' + parameter + '.npy', 'wb') as f:
+                    np.save(f, table)
+                print(file_name + " " + parameter + " Done!\n")
 
-    subjects = load_all_subjects()
-
-    if not os.path.exists('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new'):
-        os.makedirs('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/')
-
-    for func, file_name in PROB_FUNC_OPTIONS:
-        if not os.path.exists('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/' + file_name + '/'):
-            os.makedirs('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/' + file_name + '/')
+def pk_generate_data(subjects=None, path=None):
+    """
+    general function that ran through those three functions and generate probability table for each
+    function, for each parameter of scan and save them.
+    """
+    # Loop over function
+    path = RAW_DATA_PATH + path
+    for func, file_name in PROB_FUNC_OPTIONS[1:-1]:
+        if not os.path.exists(path + file_name + '/'):
+            os.makedirs(path + file_name + '/')
+        # Loop over prameters
         for parameter in PARAMETERS:
-            means, stds = ProbabilityMaker.get_means_std(subjects, parameter)
-            table = func(subjects, parameter, means)
-            with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/' + file_name + '/' + parameter + '.npy', 'wb') as f:
+            if subjects[0].parameters[parameter] is None:
+                continue
+            means, stds = pdm.ProbabilityMaker.get_means_std(subjects, parameter)
+            table = func(subjects, parameter, means, path)
+            with open(path + file_name + '/' + parameter + '.npy', 'wb') as f:
                 np.save(f, table)
+            print(file_name + " " + parameter + " Done!\n")
 
 
 def get_gaussian_pdf(means, stds, points):
@@ -162,7 +180,6 @@ def get_gaussian_pdf(means, stds, points):
     if type(points).__module__ != np.__name__ and not isinstance(points, list):
         return np.sum(np.exp(-0.5 * ((points - means) / stds) ** 2) / (np.sqrt(2 * np.pi) * stds))
     return np.array([np.sum(np.exp(-0.5 * ((point - means) / stds) ** 2) / (np.sqrt(2 * np.pi) * stds)) for point in points])
-
 
 def get_gaussian_cdf(means, stds, points):
     """
@@ -181,61 +198,44 @@ def get_gaussian_cdf(means, stds, points):
     indicies = np.digitize(points, pdf_points)
     return np.array([cdf_values[index] for index in indicies])
 
-
-def sum_gaussian(means, stds, plot=False):
-    num_of_delta_x = 100
-    # generate a sample
+def sum_gaussian(means, stds, vals, plot=False, title = None, path = None):
+    """
+    This function calaulate the probabilities to get each value in vals.
+    by sum up the gaussians the defined by the means and the stds.
+    If the means and stds are not too much so generate more by sampleing.
+    :param means: Array of the means of the gaussians.
+    :param stds: Array of the means of the gaussians.
+    :param vals: Array of the means of the gaussians.
+    :param plot: Boolean if to plot the histogram and the porobability curve.
+                    Used to see if the normalization is good.
+    :param title: The title of the plot above.
+    :param path: Path to save the plot if generated.
+    :return: List of probability values the represent the probability to get 
+            the val in vals depends on the means and stds.
+    """
+    # generate a sample if necessary.
     samples = np.array([])
-    for i in range(means.shape[0]):
-        sample = normal(loc=means[i], scale=stds[i], size=1000)
-        samples = hstack((samples, sample))
-
+    if len(means) < 100 :
+        num_of_delta_x = 100
+        for i in range(means.shape[0]):
+            sample = normal(loc=means[i], scale=stds[i], size=1000)
+            samples = hstack((samples, sample))
+    else:
+        num_of_delta_x = 100
+        samples = means
     # manual calculate sum of exp
     points = np.linspace(samples.min(), samples.max(), num=num_of_delta_x)
     values = get_gaussian_pdf(means, stds, points)
+    data_vals = get_gaussian_pdf(means, stds, vals)
     values = values/(np.sum(values)*((samples.max()-samples.min())/num_of_delta_x))
 
-    # sample = samples.reshape((len(samples), 1))
-    # # trying best fit
-    # bandwidths = 10 ** np.linspace(-1, 1, 100)
-    # grid = GridSearchCV(KernelDensity(kernel='gaussian'),
-    #                     {'bandwidth': bandwidths},
-    #                     cv=LeaveOneOut())
-    # grid.fit(sample[:, None])
-    #
-    # # calculate with kernel density estimation
-    # model = KernelDensity(bandwidth=0.4, kernel='gaussian')
-    # model.fit(sample)
-    # kd_points = points.reshape((len(points), 1))
-    # probabilities = model.score_samples(kd_points)
-    # probabilities = exp(probabilities)
-    #
-
-    # # plots all together
-    # plt.plot(kd_points, probabilities)
     if plot:
         hist_values, bins, other = plt.hist(samples, bins=75, density=True)
-        values_2 = get_gaussian_cdf(means, stds, points)
+        # values_2 = get_gaussian_cdf(means, stds, points)
         plt.plot(points, values)
-        plt.plot(points, values_2)
+        # plt.plot(points, values_2)
+        plt.title(title)
+        plt.savefig(path + '/' + title)
         plt.show()
-    return points, values
+    return data_vals
 
-
-if __name__ == '__main__':
-    # means = np.array(range(2))*2
-    # stds = np.ones(means.shape[0])/2
-    # sum_gaussian(means, stds, True)
-    # print(get_gaussian_pdf(means, stds, 5))
-
-    generate_data()
-    PROB_FUNC_OPTIONS = [(ProbabilityMaker.mean_probability_data, "per_mean"),
-                          (ProbabilityMaker.voxels_in_areas_probability, "per_area"),
-                            (ProbabilityMaker.total_voxels_probability, "total")]
-
-# for func, file_name in PROB_FUNC_OPTIONS:
-#         for parameter in PARAMETERS:
-#             with open('/ems/elsc-labs/mezer-a/nitai.seri/Desktop/IB-for-MRI/raw_data/new/' + file_name + '/' + parameter + '.npy', 'rb') as f:
-#                 a = np.load(f)
-
-    
